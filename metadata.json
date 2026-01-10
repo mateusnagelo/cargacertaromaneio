@@ -1,0 +1,6 @@
+
+{
+  "name": "CargaCerta - Sistema de Romaneio de Venda",
+  "description": "Uma aplicação completa para geração, gerenciamento e impressão de romaneios de venda. Inclui cálculos automáticos, gestão de despesas e visualização otimizada para impressão.",
+  "requestFramePermissions": []
+}

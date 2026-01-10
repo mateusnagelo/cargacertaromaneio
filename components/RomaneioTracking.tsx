@@ -1,0 +1,263 @@
+
+import React, { useState } from 'react';
+import { RomaneioData, RomaneioStatus } from '../types';
+import { 
+  Search, 
+  Calendar, 
+  User, 
+  CheckCircle2, 
+  Clock, 
+  XCircle, 
+  Printer, 
+  Trash2,
+  TrendingUp,
+  CreditCard,
+  ClipboardList,
+  Copy,
+  Check,
+  X,
+  Info
+} from 'lucide-react';
+import { formatCurrency, formatDate } from '../utils';
+
+interface Props {
+  history: RomaneioData[];
+  updateStatus: (id: string, status: RomaneioStatus) => void;
+  deleteRomaneio: (id: string) => void;
+  onView: (romaneio: RomaneioData) => void;
+  onClone: (data: RomaneioData) => void;
+}
+
+const RomaneioTracking: React.FC<Props> = ({ history = [], updateStatus, deleteRomaneio, onView, onClone }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<RomaneioStatus | 'TODOS'>('TODOS');
+  
+  const [cloneTarget, setCloneTarget] = useState<RomaneioData | null>(null);
+  const [cloneOptions, setCloneOptions] = useState({
+    client: true,
+    products: true,
+    expenses: true,
+    banking: true,
+    documentInfo: true
+  });
+
+  const filtered = history.filter(r => {
+    if (!r) return false;
+    const num = String(r.number || "");
+    const clientName = String(r.client?.name || "").toLowerCase();
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = num.includes(term) || clientName.includes(term);
+    const matchesStatus = statusFilter === 'TODOS' || r.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const totals = history.reduce((acc, r) => {
+    if (!r) return acc;
+    const productsTotal = Array.isArray(r.products) 
+      ? r.products.reduce((pAcc, p) => pAcc + ((p.quantity || 0) * (p.unitValue || 0)), 0) 
+      : 0;
+    const expensesTotal = Array.isArray(r.expenses)
+      ? r.expenses.reduce((eAcc, e) => eAcc + (Number(e.total) || 0), 0)
+      : 0;
+    const total = productsTotal + expensesTotal;
+    if (r.status === 'CONCLUÍDO') acc.concluido += total;
+    if (r.status === 'PENDENTE' || !r.status) acc.pendente += total;
+    return acc;
+  }, { concluido: 0, pendente: 0 });
+
+  const getStatusBadge = (status: RomaneioStatus) => {
+    const s = status || 'PENDENTE';
+    switch (s) {
+      case 'CONCLUÍDO':
+        return <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-black uppercase border border-green-100 dark:border-green-800"><CheckCircle2 size={12}/> Concluído</span>;
+      case 'PENDENTE':
+        return <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-[10px] font-black uppercase border border-yellow-100 dark:border-yellow-800"><Clock size={12}/> Pendente</span>;
+      case 'CANCELADO':
+        return <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-black uppercase border border-red-100 dark:border-red-800"><XCircle size={12}/> Cancelado</span>;
+      default:
+        return <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-slate-400 text-[10px] font-black uppercase border border-gray-100 dark:border-slate-700"><Clock size={12}/> Pendente</span>;
+    }
+  };
+
+  const executeClone = () => {
+    if (!cloneTarget) return;
+    const newRomaneio: RomaneioData = {
+      ...cloneTarget,
+      id: Math.random().toString(36).substr(2, 9),
+      number: (parseInt(cloneTarget.number) + 1).toString(),
+      status: 'PENDENTE',
+      emissionDate: new Date().toISOString().split('T')[0],
+      saleDate: new Date().toISOString().split('T')[0],
+      dueDate: '',
+      client: cloneOptions.client ? { ...cloneTarget.client } : { name: "", cnpj: "", neighborhood: "", ie: "/", city: "", address: "", state: "" },
+      products: cloneOptions.products ? [...cloneTarget.products] : [],
+      expenses: cloneOptions.expenses ? [...cloneTarget.expenses] : [],
+      banking: cloneOptions.banking ? { ...cloneTarget.banking } : { ...cloneTarget.banking },
+      natureOfOperation: cloneOptions.documentInfo ? cloneTarget.natureOfOperation : 'VENDA',
+      terms: cloneOptions.documentInfo ? cloneTarget.terms : '30 DIAS'
+    };
+    onClone(newRomaneio);
+    setCloneTarget(null);
+  };
+
+  return (
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 animate-in fade-in duration-500 pb-24 transition-colors">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-xl md:text-2xl font-black text-gray-800 dark:text-white uppercase tracking-tight">Vendas Realizadas</h1>
+          <p className="text-xs md:text-sm text-gray-500 dark:text-slate-400">Gestão completa de pedidos e faturamento.</p>
+        </div>
+        
+        <div className="flex gap-2 md:gap-4 w-full md:w-auto">
+          <div className="flex-1 bg-white dark:bg-slate-900 p-4 rounded-[24px] border border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-3">
+             <div className="bg-green-50 dark:bg-green-900/30 p-2 rounded-xl text-green-600"><TrendingUp size={18}/></div>
+             <div>
+               <p className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase">Recebido</p>
+               <p className="text-xs md:text-sm font-black text-green-600 dark:text-green-400">{formatCurrency(totals.concluido)}</p>
+             </div>
+          </div>
+          <div className="flex-1 bg-white dark:bg-slate-900 p-4 rounded-[24px] border border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-3">
+             <div className="bg-yellow-50 dark:bg-yellow-900/30 p-2 rounded-xl text-yellow-600"><CreditCard size={18}/></div>
+             <div>
+               <p className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase">A Receber</p>
+               <p className="text-xs md:text-sm font-black text-yellow-600 dark:text-yellow-400">{formatCurrency(totals.pendente)}</p>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-gray-100 dark:border-slate-800 shadow-xl shadow-gray-200/50 dark:shadow-none overflow-hidden transition-colors">
+        <div className="p-4 md:p-6 border-b border-gray-50 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-800/20 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={18} />
+            <input 
+              type="text" 
+              placeholder="Nº ou Cliente..." 
+              className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 transition-all text-sm text-gray-900 dark:text-white"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scroll-hide">
+            {(['TODOS', 'PENDENTE', 'CONCLUÍDO'] as const).map(s => (
+              <button 
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${statusFilter === s ? 'bg-purple-600 text-white shadow-lg shadow-purple-100 dark:shadow-none' : 'bg-white dark:bg-slate-800 text-gray-400 dark:text-slate-400 border border-gray-100 dark:border-slate-700 hover:text-gray-600 dark:hover:text-slate-200'}`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[800px]">
+            <thead>
+              <tr className="text-left text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest border-b border-gray-50 dark:border-slate-800">
+                <th className="px-6 py-5">Identificação</th>
+                <th className="px-6 py-5">Cliente</th>
+                <th className="px-6 py-5 text-center">Data</th>
+                <th className="px-6 py-5">Total</th>
+                <th className="px-6 py-5">Status</th>
+                <th className="px-6 py-5 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
+              {filtered.map(r => {
+                const pSum = Array.isArray(r.products) ? r.products.reduce((acc, p) => acc + (p.quantity * p.unitValue), 0) : 0;
+                const eSum = Array.isArray(r.expenses) ? r.expenses.reduce((acc, e) => acc + (Number(e.total) || 0), 0) : 0;
+                const total = pSum + eSum;
+                
+                return (
+                  <tr key={r.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-800/50 transition-all">
+                    <td className="px-6 py-5">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-black text-gray-800 dark:text-white">#{r.number}</span>
+                        <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold truncate max-w-[120px]">{r.company?.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-purple-50 dark:bg-purple-900/30 rounded-xl flex items-center justify-center text-purple-600 shrink-0">
+                          <User size={14} />
+                        </div>
+                        <span className="text-sm font-bold text-gray-700 dark:text-slate-300 uppercase truncate max-w-[180px]">{r.client?.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-center">
+                      <span className="text-[10px] font-bold text-gray-500 dark:text-slate-500">{formatDate(r.saleDate || r.emissionDate)}</span>
+                    </td>
+                    <td className="px-6 py-5">
+                      <span className="text-sm font-black text-gray-800 dark:text-white">{formatCurrency(total)}</span>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="relative group/status cursor-pointer">
+                        {getStatusBadge(r.status)}
+                        <div className="absolute top-full left-0 mt-2 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl shadow-2xl opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible transition-all z-20 p-2 min-w-[150px]">
+                          <button onClick={() => updateStatus(r.id, 'PENDENTE')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 rounded-lg">Pendente</button>
+                          <button onClick={() => updateStatus(r.id, 'CONCLUÍDO')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg">Concluído</button>
+                          <button onClick={() => updateStatus(r.id, 'CANCELADO')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg">Cancelar</button>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setCloneTarget(r)} className="p-2.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-all"><Copy size={18} /></button>
+                        <button onClick={() => onView(r)} className="p-2.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-xl transition-all"><Printer size={18} /></button>
+                        <button onClick={() => deleteRomaneio(r.id)} className="p-2.5 text-gray-300 dark:text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all"><Trash2 size={18} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Clone Modal */}
+      {cloneTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-end md:items-center justify-center z-[100] p-0 md:p-4 animate-in fade-in slide-in-from-bottom duration-300">
+          <div className="bg-white dark:bg-slate-900 rounded-t-[40px] md:rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 md:p-8 border-b border-gray-100 dark:border-slate-800 bg-blue-50/30 dark:bg-blue-900/20 shrink-0">
+               <div className="flex items-center justify-between mb-4">
+                 <div className="bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-100 dark:shadow-none"><Copy size={20} /></div>
+                 <button onClick={() => setCloneTarget(null)} className="p-2 hover:bg-blue-100/50 dark:hover:bg-slate-800 rounded-xl text-blue-600 dark:text-blue-400 transition-all"><X size={24} /></button>
+               </div>
+               <h3 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">Clonar Pedido</h3>
+               <p className="text-[10px] text-blue-600 dark:text-blue-400 font-black uppercase mt-2 tracking-widest">Personalizar Cópia</p>
+            </div>
+
+            <div className="p-6 md:p-8 space-y-4 overflow-y-auto">
+              {[
+                { id: 'client', label: 'Dados do Cliente' },
+                { id: 'products', label: 'Produtos' },
+                { id: 'expenses', label: 'Despesas' },
+                { id: 'banking', label: 'Dados Bancários' },
+                { id: 'documentInfo', label: 'Regras de Prazo/OP' }
+              ].map((opt) => (
+                <label key={opt.id} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer transition-all border border-gray-50 dark:border-slate-800">
+                  <input 
+                    type="checkbox" 
+                    className="h-6 w-6 rounded-lg accent-blue-600"
+                    checked={cloneOptions[opt.id as keyof typeof cloneOptions]}
+                    onChange={() => setCloneOptions(prev => ({...prev, [opt.id]: !prev[opt.id as keyof typeof cloneOptions]}))}
+                  />
+                  <span className="text-xs font-black text-gray-700 dark:text-slate-300 uppercase tracking-tight">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 gap-4 shrink-0">
+              <button onClick={() => setCloneTarget(null)} className="py-4 rounded-2xl text-gray-400 dark:text-slate-500 font-black uppercase tracking-widest text-[10px]">Cancelar</button>
+              <button onClick={executeClone} className="py-4 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest shadow-xl shadow-blue-100 dark:shadow-none text-[10px]">Criar Clone</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default RomaneioTracking;

@@ -21,12 +21,21 @@ export const DEFAULT_ROMANEIO: RomaneioData = {
   terms: "30 DIAS",
   observation: DEFAULT_OBSERVATION,
   company: {
+    id: "",
     name: "CARGACERTA LOGÍSTICA E DISTRIBUIÇÃO",
     location: "MATRIZ",
     address: "AV. COMERCIAL, S/N - CENTRO",
     cep: "47600-000",
     tel: "(77) 99999-9999",
-    logoUrl: ""
+    logoUrl: "",
+    banking: {
+      bank: "BANCO EXEMPLO S.A",
+      pix: "00.000.000/0001-00",
+      type: "CORRENTE",
+      agency: "0001",
+      account: "00000-0",
+      owner: "CARGACERTA LTDA"
+    }
   },
   client: {
     name: "",

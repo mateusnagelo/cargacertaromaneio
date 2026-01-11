@@ -1,16 +1,14 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Building2, Trash2, Upload, X, CreditCard, MapPin, Phone } from 'lucide-react';
 import { CompanyInfo } from '../types';
+import { getCompanies, addCompany, deleteCompany } from '../api/companies';
 
-interface Props {
-  companies: CompanyInfo[];
-  setCompanies: React.Dispatch<React.SetStateAction<CompanyInfo[]>>;
-}
-
-const CompanyManager: React.FC<Props> = ({ companies, setCompanies }) => {
+const CompanyManager: React.FC = () => {
+  const [companies, setCompanies] = useState<CompanyInfo[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(true);
   
   const [formData, setFormData] = useState<Partial<CompanyInfo>>({
     name: '',
@@ -29,6 +27,22 @@ const CompanyManager: React.FC<Props> = ({ companies, setCompanies }) => {
     }
   });
 
+  useEffect(() => {
+    fetchCompanies();
+  }, []);
+
+  const fetchCompanies = async () => {
+    try {
+      setLoading(true);
+      const data = await getCompanies();
+      setCompanies(data);
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -38,24 +52,37 @@ const CompanyManager: React.FC<Props> = ({ companies, setCompanies }) => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name) return;
-    const newCompany: CompanyInfo = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: formData.name,
-      location: formData.location || '',
-      address: formData.address || '',
-      cep: formData.cep || '',
-      tel: formData.tel || '',
-      logoUrl: formData.logoUrl || '',
-      banking: formData.banking as any
-    };
-    setCompanies([...companies, newCompany]);
-    setIsAdding(false);
+    try {
+      await addCompany({
+        name: formData.name,
+        location: formData.location || '',
+        address: formData.address || '',
+        cep: formData.cep || '',
+        tel: formData.tel || '',
+        logoUrl: formData.logoUrl || '',
+        banking: formData.banking as any
+      });
+      fetchCompanies();
+      setIsAdding(false);
+      // Reset form
+      setFormData({
+        name: '', location: '', address: '', cep: '', tel: '', logoUrl: '',
+        banking: { bank: '', pix: '', type: 'CORRENTE', agency: '', account: '', owner: '' }
+      });
+    } catch (error) {
+      console.error('Error adding company:', error);
+    }
   };
 
-  const removeCompany = (id: string) => {
-    setCompanies(companies.filter(c => c.id !== id));
+  const removeCompany = async (id: number) => {
+    try {
+      await deleteCompany(id);
+      fetchCompanies();
+    } catch (error) {
+      console.error('Error deleting company:', error);
+    }
   };
 
   return (
@@ -74,7 +101,8 @@ const CompanyManager: React.FC<Props> = ({ companies, setCompanies }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {companies.map(c => (
+        {loading && <p className="text-center col-span-full">Carregando empresas...</p>}
+        {!loading && companies.map(c => (
           <div key={c.id} className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 p-6 shadow-sm hover:shadow-xl dark:hover:bg-slate-800/50 transition-all group flex flex-col">
             <div className="flex justify-between items-start mb-6">
               <div className="flex items-center gap-4">
@@ -91,7 +119,7 @@ const CompanyManager: React.FC<Props> = ({ companies, setCompanies }) => {
                 </div>
               </div>
               <button 
-                onClick={() => removeCompany(c.id)}
+                onClick={() => c.id && removeCompany(c.id)}
                 className="text-gray-200 dark:text-slate-700 hover:text-red-500 p-2 transition-colors"
               >
                 <Trash2 size={20} />

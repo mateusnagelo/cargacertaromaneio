@@ -1,14 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, MessageSquareText, Trash2, Search, FileText, X, Save, Edit2 } from 'lucide-react';
 import { Observation } from '../types';
+import { getObservations, addObservation, updateObservation, deleteObservation } from '../src/api/observations';
 
-interface Props {
-  observations: Observation[];
-  setObservations: React.Dispatch<React.SetStateAction<Observation[]>>;
-}
-
-const ObservationManager: React.FC<Props> = ({ observations, setObservations }) => {
+const ObservationManager: React.FC = () => {
+  const [observations, setObservations] = useState<Observation[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -16,6 +13,30 @@ const ObservationManager: React.FC<Props> = ({ observations, setObservations }) 
     title: '',
     content: ''
   });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    fetchObservations(abortController.signal);
+
+    return () => {
+      abortController.abort();
+    };
+  }, []);
+
+  const fetchObservations = async (signal?: AbortSignal) => {
+    try {
+      setLoading(true);
+      const data = await getObservations(signal);
+      setObservations(data);
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error('Error fetching observations:', error);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleOpenAdd = () => {
     setEditingId(null);
@@ -29,34 +50,38 @@ const ObservationManager: React.FC<Props> = ({ observations, setObservations }) 
     setIsAdding(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.title || !formData.content) return;
 
-    if (editingId) {
-      // Update existing
-      setObservations(prev => prev.map(o => 
-        o.id === editingId 
-          ? { ...o, title: formData.title!.toUpperCase(), content: formData.content! } 
-          : o
-      ));
-    } else {
-      // Create new
-      const newObs: Observation = {
-        id: Math.random().toString(36).substr(2, 9),
-        title: formData.title.toUpperCase(),
-        content: formData.content
-      };
-      setObservations([...observations, newObs]);
+    try {
+      if (editingId) {
+        await updateObservation(editingId, { 
+          title: formData.title.toUpperCase(), 
+          content: formData.content 
+        });
+      } else {
+        await addObservation({
+          title: formData.title.toUpperCase(),
+          content: formData.content
+        });
+      }
+      fetchObservations();
+      setFormData({ title: '', content: '' });
+      setEditingId(null);
+      setIsAdding(false);
+    } catch (error) {
+      console.error('Error saving observation:', error);
     }
-
-    setFormData({ title: '', content: '' });
-    setEditingId(null);
-    setIsAdding(false);
   };
 
-  const removeObservation = (id: string) => {
+  const removeObservation = async (id: string) => {
     if (confirm('Deseja excluir este modelo de observação?')) {
-      setObservations(observations.filter(o => o.id !== id));
+      try {
+        await deleteObservation(id);
+        fetchObservations();
+      } catch (error) {
+        console.error('Error deleting observation:', error);
+      }
     }
   };
 

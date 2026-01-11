@@ -53,6 +53,15 @@ export interface Observation {
   content: string;
 }
 
+export interface CatalogProduct {
+  id: number;
+  created_at?: string;
+  name: string;
+  description?: string | null;
+  price?: number | null;
+  unit?: string | null;
+}
+
 export interface Product {
   id: string;
   code: string;
@@ -73,6 +82,7 @@ export interface Expense {
 
 export interface RomaneioData {
   id: string;
+  created_at?: string;
   number: string;
   emissionDate: string;
   saleDate: string;
@@ -80,17 +90,13 @@ export interface RomaneioData {
   natureOfOperation: string;
   terms: string;
   status: RomaneioStatus;
-  companyId: string;
-  customerId: string;
+  companyId?: string;
+  customerId?: string;
+  company_id?: string;
+  customer_id?: string;
   observation: string;
-  company: {
-    name: string;
-    location: string;
-    address: string;
-    cep: string;
-    tel: string;
-    logoUrl?: string;
-  };
+  company: CompanyInfo;
+  customer?: Customer;
   client: {
     name: string;
     cnpj: string;

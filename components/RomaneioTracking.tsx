@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RomaneioData, RomaneioStatus } from '../types';
 import { 
   Search, 
@@ -19,16 +19,15 @@ import {
   Info
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils';
+import { addRomaneio, getRomaneios, deleteRomaneio as deleteRomaneioAPI, updateRomaneioStatus as updateStatusAPI } from '../api/romaneios';
 
 interface Props {
-  history: RomaneioData[];
-  updateStatus: (id: string, status: RomaneioStatus) => void;
-  deleteRomaneio: (id: string) => void;
   onView: (romaneio: RomaneioData) => void;
-  onClone: (data: RomaneioData) => void;
 }
 
-const RomaneioTracking: React.FC<Props> = ({ history = [], updateStatus, deleteRomaneio, onView, onClone }) => {
+const RomaneioTracking: React.FC<Props> = ({ onView }) => {
+  const [history, setHistory] = useState<RomaneioData[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<RomaneioStatus | 'TODOS'>('TODOS');
   
@@ -40,6 +39,49 @@ const RomaneioTracking: React.FC<Props> = ({ history = [], updateStatus, deleteR
     banking: true,
     documentInfo: true
   });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchRomaneios(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  const fetchRomaneios = async (signal?: AbortSignal) => {
+    try {
+      setLoading(true);
+      const data = await getRomaneios(signal);
+      setHistory(data);
+    } catch (error: any) {
+      if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
+        console.error('Error fetching romaneios:', error);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateStatus = async (id: number, status: RomaneioStatus) => {
+    try {
+      await updateStatusAPI(id, status);
+      fetchRomaneios(); // Re-fetch to get the latest data
+    } catch (error) {
+      console.error('Error updating status:', error);
+    }
+  };
+
+  const deleteRomaneio = async (id: number) => {
+    if (window.confirm('Tem certeza que deseja deletar este romaneio?')) {
+      try {
+        await deleteRomaneioAPI(id);
+        fetchRomaneios(); // Re-fetch to get the latest data
+      } catch (error) {
+        console.error('Error deleting romaneio:', error);
+      }
+    }
+  };
 
   const filtered = history.filter(r => {
     if (!r) return false;
@@ -79,25 +121,38 @@ const RomaneioTracking: React.FC<Props> = ({ history = [], updateStatus, deleteR
     }
   };
 
-  const executeClone = () => {
+  const executeClone = async () => {
     if (!cloneTarget) return;
-    const newRomaneio: RomaneioData = {
+
+    // Construct the new romaneio object, omitting fields that the DB will generate
+    const newRomaneioData: Omit<RomaneioData, 'id' | 'created_at'> = {
       ...cloneTarget,
-      id: Math.random().toString(36).substr(2, 9),
-      number: (parseInt(cloneTarget.number) + 1).toString(),
+      number: `CLONE-${cloneTarget.number}`, // Indicate it's a clone
       status: 'PENDENTE',
       emissionDate: new Date().toISOString().split('T')[0],
       saleDate: new Date().toISOString().split('T')[0],
       dueDate: '',
-      client: cloneOptions.client ? { ...cloneTarget.client } : { name: "", cnpj: "", neighborhood: "", ie: "/", city: "", address: "", state: "" },
-      products: cloneOptions.products ? [...cloneTarget.products] : [],
-      expenses: cloneOptions.expenses ? [...cloneTarget.expenses] : [],
-      banking: cloneOptions.banking ? { ...cloneTarget.banking } : { ...cloneTarget.banking },
+      // Ensure we are passing only IDs for relations
+      customer_id: cloneOptions.client && cloneTarget.customer ? cloneTarget.customer.id : undefined,
+      company_id: cloneTarget.company ? cloneTarget.company.id : undefined,
+      products: cloneOptions.products ? cloneTarget.products.map(p => ({ ...p, id: Math.random().toString(36).substr(2, 9) })) : [],
+      expenses: cloneOptions.expenses ? cloneTarget.expenses.map(exp => ({ ...exp, id: Math.random().toString(36).substr(2, 9) })) : [],
+      banking: cloneOptions.banking ? { ...cloneTarget.banking } : undefined,
       natureOfOperation: cloneOptions.documentInfo ? cloneTarget.natureOfOperation : 'VENDA',
-      terms: cloneOptions.documentInfo ? cloneTarget.terms : '30 DIAS'
+      terms: cloneOptions.documentInfo ? cloneTarget.terms : '30 DIAS',
+      // Explicitly remove fields that should not be cloned directly
+      customer: undefined,
+      company: undefined,
     };
-    onClone(newRomaneio);
-    setCloneTarget(null);
+
+    try {
+      await addRomaneio(newRomaneioData);
+      fetchRomaneios(); // Refresh the list
+      setCloneTarget(null); // Close the modal
+    } catch (error) {
+      console.error('Failed to clone romaneio:', error);
+      alert('Erro ao clonar o romaneio. Verifique o console para mais detalhes.');
+    }
   };
 
   return (
@@ -195,9 +250,9 @@ const RomaneioTracking: React.FC<Props> = ({ history = [], updateStatus, deleteR
                       <div className="relative group/status cursor-pointer">
                         {getStatusBadge(r.status)}
                         <div className="absolute top-full left-0 mt-2 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl shadow-2xl opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible transition-all z-20 p-2 min-w-[150px]">
-                          <button onClick={() => updateStatus(r.id, 'PENDENTE')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 rounded-lg">Pendente</button>
-                          <button onClick={() => updateStatus(r.id, 'CONCLUÍDO')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg">Concluído</button>
-                          <button onClick={() => updateStatus(r.id, 'CANCELADO')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg">Cancelar</button>
+                          <button onClick={() => r.id && updateStatus(r.id, 'PENDENTE')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 rounded-lg">Pendente</button>
+                          <button onClick={() => r.id && updateStatus(r.id, 'CONCLUÍDO')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg">Concluído</button>
+                          <button onClick={() => r.id && updateStatus(r.id, 'CANCELADO')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg">Cancelar</button>
                         </div>
                       </div>
                     </td>
@@ -205,12 +260,22 @@ const RomaneioTracking: React.FC<Props> = ({ history = [], updateStatus, deleteR
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => setCloneTarget(r)} className="p-2.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-all"><Copy size={18} /></button>
                         <button onClick={() => onView(r)} className="p-2.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-xl transition-all"><Printer size={18} /></button>
-                        <button onClick={() => deleteRomaneio(r.id)} className="p-2.5 text-gray-300 dark:text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all"><Trash2 size={18} /></button>
+                        <button onClick={() => r.id && deleteRomaneio(r.id)} className="p-2.5 text-gray-300 dark:text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all"><Trash2 size={18} /></button>
                       </div>
                     </td>
                   </tr>
                 );
               })}
+              {loading && (
+                <tr>
+                  <td colSpan={6} className="py-20 text-center text-gray-400 dark:text-slate-600 italic">Carregando romaneios...</td>
+                </tr>
+              )}
+              {!loading && filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-20 text-center text-gray-400 dark:text-slate-600 italic">Nenhum romaneio encontrado.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

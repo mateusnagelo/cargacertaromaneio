@@ -1,54 +1,80 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CompanyInfo, Customer, ProductStock, RomaneioData, Product, Expense, ExpenseStock, RomaneioStatus, Observation } from '../types';
+import { CatalogProduct, CompanyInfo, Customer, Product, RomaneioData, Expense, ExpenseStock, RomaneioStatus, Observation } from '../types';
 import { DEFAULT_ROMANEIO } from '../constants';
 import { FileDown, ChevronLeft, Edit3, Printer, Building2, Users, Package, Plus, DollarSign, Save, CheckCircle } from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils';
 import RomaneioForm from './RomaneioForm';
 import RomaneioPreview from './RomaneioPreview';
+import { getCompanies } from '../api/companies';
+import { getCustomers } from '../api/customers';
+import { getProducts } from '../api/products';
+import { addRomaneio } from '../api/romaneios';
 
 interface Props {
-  companies: CompanyInfo[];
-  customers: Customer[];
-  stockProducts: ProductStock[];
   expenseStock: ExpenseStock[];
   observations: Observation[];
   onSave: (data: RomaneioData) => void;
   initialData?: RomaneioData | null;
 }
 
-const RomaneioGenerator: React.FC<Props> = ({ companies, customers, stockProducts, expenseStock, observations, onSave, initialData }) => {
+const RomaneioGenerator: React.FC<Props> = ({ expenseStock, observations, onSave, initialData }) => {
   const [view, setView] = useState<'edit' | 'preview'>('edit');
-  const [selectedCompanyId, setSelectedCompanyId] = useState(initialData?.companyId || companies[0]?.id || '');
-  const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId || '');
   
-  const [romaneio, setRomaneio] = useState<RomaneioData>(() => {
-    if (initialData) return { ...initialData };
-    
-    return {
-      ...DEFAULT_ROMANEIO,
-      id: Math.random().toString(36).substr(2, 9),
-      companyId: companies[0]?.id || '',
-      customerId: '',
-      products: [],
-      expenses: []
+  // Data fetched from API
+  const [companies, setCompanies] = useState<CompanyInfo[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [stockProducts, setStockProducts] = useState<CatalogProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [romaneio, setRomaneio] = useState<RomaneioData>(initialData || DEFAULT_ROMANEIO);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [companiesData, customersData, productsData] = await Promise.all([
+          getCompanies(signal),
+          getCustomers(signal),
+          getProducts(signal)
+        ]);
+        setCompanies(companiesData);
+        setCustomers(customersData);
+        setStockProducts(productsData);
+
+        // Set default company if not cloning and companies are loaded
+        if (!initialData && companiesData.length > 0) {
+          setRomaneio(prev => ({ ...prev, company: companiesData[0], banking: companiesData[0].banking }));
+        }
+
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          console.error("Failed to fetch initial data for Romaneio Generator", error);
+        }
+      } finally {
+        setLoading(false);
+      }
     };
-  });
+    fetchData();
+
+    return () => controller.abort();
+  }, [initialData]);
 
   useEffect(() => {
     if (initialData) {
       setRomaneio({ ...initialData });
-      setSelectedCompanyId(initialData.companyId);
-      setSelectedCustomerId(initialData.customerId);
     }
   }, [initialData]);
 
-  const activeCompany = companies.find(c => c.id === selectedCompanyId);
-  const activeCustomer = customers.find(c => c.id === selectedCustomerId);
+  const activeCompany = romaneio.company;
+  const activeCustomer = romaneio.customer;
 
   const totals = useMemo(() => {
-    const productsTotal = romaneio.products.reduce((acc, p) => acc + ((p.quantity || 0) * (p.unitValue || 0)), 0);
-    const expensesTotal = romaneio.expenses.reduce((acc, e) => acc + (Number(e.total) || 0), 0);
+    const productsTotal = (romaneio.products || []).reduce((acc, p) => acc + ((p.quantity || 0) * (p.unitValue || 0)), 0);
+    const expensesTotal = (romaneio.expenses || []).reduce((acc, e) => acc + (Number(e.total) || 0), 0);
     return {
       products: productsTotal,
       expenses: expensesTotal,
@@ -73,42 +99,42 @@ const RomaneioGenerator: React.FC<Props> = ({ companies, customers, stockProduct
     }
   };
 
-  const processSave = (forcedStatus?: RomaneioStatus) => {
-    if (!romaneio.company?.name || !romaneio.client?.name) {
-      alert('Certifique-se de preencher os nomes da Empresa e do Cliente no formulário.');
+  const processSave = async (forcedStatus?: RomaneioStatus) => {
+    if (!romaneio.company?.id || !romaneio.customer?.id) {
+      alert('Selecione uma empresa e um cliente antes de salvar.');
       return;
     }
 
-    const finalData: RomaneioData = {
+    const finalData: Omit<RomaneioData, 'id' | 'created_at'> = {
       ...romaneio,
       status: forcedStatus || romaneio.status || 'PENDENTE',
-      companyId: selectedCompanyId,
-      customerId: selectedCustomerId,
+      company_id: romaneio.company.id,
+      customer_id: romaneio.customer.id,
     };
 
-    onSave(finalData);
-    
-    setRomaneio({
-      ...DEFAULT_ROMANEIO,
-      id: Math.random().toString(36).substr(2, 9),
-      companyId: selectedCompanyId,
-      products: [],
-      expenses: []
-    });
-    setSelectedCustomerId('');
+    const controller = new AbortController();
+    try {
+      const savedRomaneio = await addRomaneio(finalData, controller.signal);
+      onSave(savedRomaneio as RomaneioData);
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error('Failed to save romaneio:', error);
+        alert('Erro ao salvar o romaneio. Verifique o console para mais detalhes.');
+      }
+    }
   };
 
   const handleAddStockProduct = (productId: string) => {
-    const stockP = stockProducts.find(p => p.id === productId);
+    const stockP = stockProducts.find(p => String(p.id) === productId);
     if (!stockP) return;
 
     const newProduct: Product = {
       id: Math.random().toString(36).substr(2, 9),
-      code: stockP.code,
-      description: stockP.description,
-      kg: stockP.kg,
+      code: String(stockP.id),
+      description: stockP.description || stockP.name,
+      kg: 15,
       quantity: 1,
-      unitValue: stockP.defaultUnitValue
+      unitValue: Number(stockP.price || 0)
     };
     setRomaneio(prev => ({...prev, products: [...prev.products, newProduct]}));
   };
@@ -128,26 +154,7 @@ const RomaneioGenerator: React.FC<Props> = ({ companies, customers, stockProduct
     setRomaneio(prev => ({...prev, expenses: [...prev.expenses, newExpense]}));
   };
 
-  useEffect(() => {
-    if (activeCompany && !initialData) {
-      setRomaneio(prev => ({
-        ...prev,
-        companyId: activeCompany.id,
-        company: { ...activeCompany },
-        banking: { ...activeCompany.banking }
-      }));
-    }
-  }, [selectedCompanyId, initialData]);
 
-  useEffect(() => {
-    if (activeCustomer && !initialData) {
-      setRomaneio(prev => ({
-        ...prev,
-        customerId: activeCustomer.id,
-        client: { ...activeCustomer }
-      }));
-    }
-  }, [selectedCustomerId, initialData]);
 
   return (
     <div className="flex flex-col min-h-full pb-32 transition-colors duration-300">
@@ -197,70 +204,18 @@ const RomaneioGenerator: React.FC<Props> = ({ companies, customers, stockProduct
 
       <div className="p-8 max-w-6xl mx-auto w-full space-y-6">
         {view === 'edit' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-1 space-y-6 no-print">
-               <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
-                  <div>
-                    <label className="text-[10px] font-black text-indigo-400 uppercase flex items-center gap-2 mb-2">
-                      <Building2 size={12} /> Selecionar Empresa
-                    </label>
-                    <select 
-                      className="w-full p-2 text-sm border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                      value={selectedCompanyId}
-                      onChange={e => setSelectedCompanyId(e.target.value)}
-                    >
-                      <option value="">Selecione...</option>
-                      {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-blue-400 uppercase flex items-center gap-2 mb-2">
-                      <Users size={12} /> Selecionar Cliente
-                    </label>
-                    <select 
-                      className="w-full p-2 text-sm border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                      value={selectedCustomerId}
-                      onChange={e => setSelectedCustomerId(e.target.value)}
-                    >
-                      <option value="">Selecione do Cadastro...</option>
-                      {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-               </div>
-               <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm">
-                  <label className="text-[10px] font-black text-green-500 uppercase flex items-center gap-2 mb-3">
-                    <Package size={12} /> Produtos no Estoque
-                  </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scroll-hide">
-                    {stockProducts.map(p => (
-                      <button key={p.id} onClick={() => handleAddStockProduct(p.id)} className="w-full p-2.5 text-left bg-gray-50 dark:bg-slate-800 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-xl border border-gray-100 dark:border-slate-700 transition-colors group flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-gray-700 dark:text-slate-300 uppercase truncate">{p.description}</span>
-                        <Plus size={12} className="text-gray-300 dark:text-slate-600 group-hover:text-green-500 shrink-0" />
-                      </button>
-                    ))}
-                  </div>
-                  <label className="text-[10px] font-black text-pink-500 uppercase flex items-center gap-2 mt-6 mb-3">
-                    <DollarSign size={12} /> Despesas Cadastradas
-                  </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scroll-hide">
-                    {expenseStock.map(e => (
-                      <button key={e.id} onClick={() => handleAddStockExpense(e.id)} className="w-full p-2.5 text-left bg-gray-50 dark:bg-slate-800 hover:bg-pink-50 dark:hover:bg-pink-900/20 rounded-xl border border-gray-100 dark:border-slate-700 transition-colors group flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-gray-700 dark:text-slate-300 uppercase truncate">{e.description}</span>
-                        <Plus size={12} className="text-gray-300 dark:text-slate-600 group-hover:text-pink-500 shrink-0" />
-                      </button>
-                    ))}
-                  </div>
-               </div>
-            </div>
-            <div className="lg:col-span-3">
-               <RomaneioForm 
-                  data={romaneio} 
-                  setData={setRomaneio} 
-                  totals={totals} 
-                  observations={observations}
-               />
-            </div>
-          </div>
+          <RomaneioForm 
+            data={romaneio}
+            setData={setRomaneio}
+            companies={companies}
+            customers={customers}
+            stockProducts={stockProducts}
+            expenseStock={expenseStock}
+            observations={observations}
+            onAddStockProduct={handleAddStockProduct}
+            onAddStockExpense={handleAddStockExpense}
+            totals={totals}
+          />
         ) : (
           <div className="flex justify-center">
              <RomaneioPreview data={romaneio} totals={totals} />

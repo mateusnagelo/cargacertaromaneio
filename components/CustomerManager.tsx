@@ -1,44 +1,81 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Users, Trash2, Search, MapPin } from 'lucide-react';
 import { Customer } from '../types';
+import { getCustomers, addCustomer, deleteCustomer } from '../api/customers';
 
-interface Props {
-  customers: Customer[];
-  setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
-}
-
-const CustomerManager: React.FC<Props> = ({ customers, setCustomers }) => {
+const CustomerManager: React.FC = () => {
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<Partial<Customer>>({
     name: '', cnpj: '', city: '', state: '', address: '', neighborhood: '', ie: '/'
   });
+  const [loading, setLoading] = useState(true);
 
-  const handleSave = () => {
-    if (!formData.name) return;
-    const newCustomer: Customer = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: formData.name,
-      cnpj: formData.cnpj || '',
-      city: formData.city || '',
-      state: formData.state || '',
-      address: formData.address || '',
-      neighborhood: formData.neighborhood || '',
-      ie: formData.ie || '/'
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchCustomers(controller.signal);
+
+    return () => {
+      controller.abort();
     };
-    setCustomers([...customers, newCustomer]);
-    setFormData({ name: '', cnpj: '', city: '', state: '', address: '', neighborhood: '', ie: '/' });
-    setIsAdding(false);
+  }, []);
+
+  const fetchCustomers = async (signal?: AbortSignal) => {
+    try {
+      setLoading(true);
+      const data = await getCustomers(signal);
+      if (data) {
+        setCustomers(data);
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
+        console.error('Error fetching customers:', error);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const removeCustomer = (id: string) => {
-    setCustomers(customers.filter(c => c.id !== id));
+  const handleSave = async () => {
+    if (!formData.name) return;
+    const controller = new AbortController();
+    try {
+      await addCustomer({
+        name: formData.name,
+        cnpj: formData.cnpj || '',
+        ie: formData.ie || '/',
+        neighborhood: formData.neighborhood || '',
+        city: formData.city || '',
+        address: formData.address || '',
+        state: formData.state || '',
+      }, controller.signal);
+      fetchCustomers(controller.signal); // Refresh list
+      setFormData({ name: '', cnpj: '', city: '', state: '', address: '', neighborhood: '', ie: '/' });
+      setIsAdding(false);
+    } catch (error: any) {
+      if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
+        console.error('Error adding customer:', error);
+      }
+    }
+  };
+
+  const removeCustomer = async (id: string) => {
+    const controller = new AbortController();
+    try {
+      await deleteCustomer(id, controller.signal);
+      fetchCustomers(controller.signal); // Refresh list
+    } catch (error: any) {
+      if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
+        console.error('Error deleting customer:', error);
+      }
+    }
   };
 
   const filtered = customers.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.cnpj.includes(searchTerm)
+    (c.cnpj && c.cnpj.includes(searchTerm))
   );
 
   return (

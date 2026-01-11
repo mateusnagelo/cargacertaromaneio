@@ -1,45 +1,76 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Package, Trash2, Edit2, Search } from 'lucide-react';
-import { ProductStock } from '../types';
+import { CatalogProduct } from '../types';
 import { formatCurrency } from '../utils';
+import { getProducts, addProduct, deleteProduct } from '../api/products';
 
-interface Props {
-  products: ProductStock[];
-  setProducts: React.Dispatch<React.SetStateAction<ProductStock[]>>;
-}
-
-const ProductManager: React.FC<Props> = ({ products, setProducts }) => {
+const ProductManager: React.FC = () => {
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [formData, setFormData] = useState<Partial<ProductStock>>({
-    code: '',
+  const [formData, setFormData] = useState<Partial<CatalogProduct>>({
+    name: '',
     description: '',
-    kg: 15,
-    defaultUnitValue: 0
+    price: 0,
+    unit: 'caixa'
   });
+  const [loading, setLoading] = useState(true);
+  const controller = new AbortController();
 
-  const handleSave = () => {
-    if (!formData.description) return;
-    const newProduct: ProductStock = {
-      id: Math.random().toString(36).substr(2, 9),
-      code: formData.code || (products.length + 1).toString(),
-      description: formData.description,
-      kg: formData.kg || 15,
-      defaultUnitValue: formData.defaultUnitValue || 0
-    };
-    setProducts([...products, newProduct]);
-    setFormData({ code: '', description: '', kg: 15, defaultUnitValue: 0 });
-    setIsAdding(false);
+  useEffect(() => {
+    fetchProducts(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  const fetchProducts = async (signal?: AbortSignal) => {
+    try {
+      setLoading(true);
+      const data = await getProducts(signal);
+      setProducts(data);
+    } catch (error: any) {
+      if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
+        console.error('Error fetching products:', error);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const removeProduct = (id: string) => {
-    setProducts(products.filter(p => p.id !== id));
+  const handleSave = async () => {
+    if (!formData.name) return;
+    try {
+      await addProduct({
+        name: formData.name,
+        description: formData.description ?? null,
+        price: formData.price ?? null,
+        unit: formData.unit ?? null,
+      }, controller.signal);
+      
+      // Reset and refetch
+      setFormData({ name: '', description: '', price: 0, unit: 'caixa' });
+      setIsAdding(false);
+      fetchProducts(controller.signal);
+
+    } catch (error: any) {
+      if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
+        console.error('Error adding product:', error);
+      }
+    }
+  };
+
+  const removeProduct = async (id: number) => {
+    const controller = new AbortController();
+    try {
+      await deleteProduct(id);
+      fetchProducts(controller.signal);
+    } catch (error) {
+      console.error('Error deleting product:', error);
+    }
   };
 
   const filtered = products.filter(p => 
-    p.description.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.code.includes(searchTerm)
+    (p.name || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -73,28 +104,33 @@ const ProductManager: React.FC<Props> = ({ products, setProducts }) => {
           <table className="w-full">
             <thead>
               <tr className="text-left text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider bg-gray-50/50 dark:bg-slate-800/40 border-b border-gray-100 dark:border-slate-800">
-                <th className="px-6 py-4">Código</th>
-                <th className="px-6 py-4">Descrição</th>
-                <th className="px-6 py-4">Peso (KG)</th>
-                <th className="px-6 py-4 text-right">Preço Sugerido</th>
+                <th className="px-6 py-4">ID</th>
+                <th className="px-6 py-4">Nome</th>
+                <th className="px-6 py-4">Unidade</th>
+                <th className="px-6 py-4 text-right">Preço</th>
                 <th className="px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-              {filtered.map(p => (
+              {loading && (
+                <tr>
+                  <td colSpan={5} className="py-20 text-center text-gray-400 dark:text-slate-600 italic">Carregando produtos...</td>
+                </tr>
+              )}
+              {!loading && filtered.map(p => (
                 <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/30 transition-colors group">
-                  <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-slate-500">{p.code}</td>
-                  <td className="px-6 py-4 font-bold text-gray-700 dark:text-slate-200 uppercase">{p.description}</td>
-                  <td className="px-6 py-4 text-gray-600 dark:text-slate-400">{p.kg}kg</td>
-                  <td className="px-6 py-4 text-right font-bold text-green-600 dark:text-green-400">{formatCurrency(p.defaultUnitValue)}</td>
+                  <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-slate-500">{p.id}</td>
+                  <td className="px-6 py-4 font-bold text-gray-700 dark:text-slate-200 uppercase">{p.name}</td>
+                  <td className="px-6 py-4 text-gray-600 dark:text-slate-400">{p.unit}</td>
+                  <td className="px-6 py-4 text-right font-bold text-green-600 dark:text-green-400">{formatCurrency(p.price || 0)}</td>
                   <td className="px-6 py-4 text-right space-x-2">
-                    <button onClick={() => removeProduct(p.id)} className="text-gray-300 dark:text-slate-600 hover:text-red-500 transition-colors p-1">
+                    <button onClick={() => p.id && removeProduct(p.id)} className="text-gray-300 dark:text-slate-600 hover:text-red-500 transition-colors p-1">
                       <Trash2 size={16} />
                     </button>
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {!loading && filtered.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-20 text-center text-gray-400 dark:text-slate-600 italic">Nenhum produto encontrado.</td>
                 </tr>
@@ -114,41 +150,35 @@ const ProductManager: React.FC<Props> = ({ products, setProducts }) => {
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-500 dark:text-slate-500 uppercase mb-1">Código</label>
-                <input 
-                  type="text" 
-                  className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
-                  value={formData.code}
-                  onChange={e => setFormData({...formData, code: e.target.value})}
-                />
-              </div>
-              <div>
                 <label className="block text-xs font-bold text-gray-500 dark:text-slate-500 uppercase mb-1">Nome do Produto</label>
                 <input 
                   type="text" 
+                  placeholder="Ex: Uva Thompson"
                   className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
-                  value={formData.description}
-                  onChange={e => setFormData({...formData, description: e.target.value.toUpperCase()})}
+                  value={formData.name}
+                  onChange={e => setFormData({...formData, name: e.target.value})}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-slate-500 uppercase mb-1">Peso (KG)</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-slate-500 uppercase mb-1">Unidade</label>
                   <input 
-                    type="number" 
+                    type="text" 
+                    placeholder="Ex: caixa"
                     className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
-                    value={formData.kg}
-                    onChange={e => setFormData({...formData, kg: parseFloat(e.target.value)})}
+                    value={formData.unit}
+                    onChange={e => setFormData({...formData, unit: e.target.value})}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-slate-500 uppercase mb-1">Preço Unitário</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-slate-500 uppercase mb-1">Preço</label>
                   <input 
                     type="number" 
                     step="0.01"
+                    placeholder="0.00"
                     className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
-                    value={formData.defaultUnitValue}
-                    onChange={e => setFormData({...formData, defaultUnitValue: parseFloat(e.target.value)})}
+                    value={formData.price}
+                    onChange={e => setFormData({...formData, price: parseFloat(e.target.value) || 0})}
                   />
                 </div>
               </div>

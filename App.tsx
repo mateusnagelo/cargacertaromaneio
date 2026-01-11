@@ -19,9 +19,9 @@ import {
 } from 'lucide-react';
 import { CompanyInfo, Customer, ProductStock, RomaneioData, ExpenseStock, RomaneioStatus, Observation } from './types';
 import { DEFAULT_ROMANEIO, DEFAULT_OBSERVATION } from './constants';
-import CompanyManager from './components/CompanyManager';
-import CustomerManager from './components/CustomerManager';
-import ProductManager from './components/ProductManager';
+import CompanyManager from './components/CompanyManager.tsx';
+import CustomerManager from './components/CustomerManager.tsx';
+import ProductManager from './components/ProductManager.tsx';
 import ExpenseManager from './components/ExpenseManager';
 import RomaneioGenerator from './components/RomaneioGenerator';
 import RomaneioTracking from './components/RomaneioTracking';
@@ -43,23 +43,9 @@ const App: React.FC = () => {
   });
 
   // Global State (Persisted in LocalStorage)
-  const [companies, setCompanies] = useState<CompanyInfo[]>(() => {
-    try {
-      const saved = localStorage.getItem('bb_companies');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-
   const [customers, setCustomers] = useState<Customer[]>(() => {
     try {
       const saved = localStorage.getItem('bb_customers');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-
-  const [products, setProducts] = useState<ProductStock[]>(() => {
-    try {
-      const saved = localStorage.getItem('bb_products');
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
@@ -85,20 +71,9 @@ const App: React.FC = () => {
     ];
   });
 
-  const [romaneioHistory, setRomaneioHistory] = useState<RomaneioData[]>(() => {
-    try {
-      const saved = localStorage.getItem('bb_history');
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch { return []; }
-  });
-
-  useEffect(() => { localStorage.setItem('bb_companies', JSON.stringify(companies)); }, [companies]);
   useEffect(() => { localStorage.setItem('bb_customers', JSON.stringify(customers)); }, [customers]);
-  useEffect(() => { localStorage.setItem('bb_products', JSON.stringify(products)); }, [products]);
   useEffect(() => { localStorage.setItem('bb_observations', JSON.stringify(observations)); }, [observations]);
   useEffect(() => { localStorage.setItem('bb_expenses_stock', JSON.stringify(expenseStock)); }, [expenseStock]);
-  useEffect(() => { localStorage.setItem('bb_history', JSON.stringify(romaneioHistory)); }, [romaneioHistory]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -121,26 +96,18 @@ const App: React.FC = () => {
     }
   };
 
-  const addRomaneioToHistory = (romaneio: RomaneioData) => {
-    setRomaneioHistory(prev => [romaneio, ...prev]);
+  const handleSaveRomaneio = (romaneio: RomaneioData) => {
     setClonedData(null);
-    setTimeout(() => {
-      setActiveScreen('tracking');
-    }, 150);
+    setActiveScreen('tracking');
   };
 
-  const updateRomaneioStatus = (id: string, status: RomaneioStatus) => {
-    setRomaneioHistory(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-  };
-
-  const deleteRomaneio = (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este romaneio?')) {
-      setRomaneioHistory(prev => prev.filter(r => r.id !== id));
-    }
-  };
-
-  const handleCloneRequest = (data: RomaneioData) => {
+  const handleClone = (data: RomaneioData) => {
     setClonedData(data);
+    setActiveScreen('romaneios');
+  };
+
+  const handleView = (romaneio: RomaneioData) => {
+    setClonedData(romaneio);
     setActiveScreen('romaneios');
   };
 
@@ -148,32 +115,25 @@ const App: React.FC = () => {
     switch (activeScreen) {
       case 'tracking':
         return <RomaneioTracking 
-                  history={romaneioHistory} 
-                  updateStatus={updateRomaneioStatus} 
-                  deleteRomaneio={deleteRomaneio}
-                  onClone={handleCloneRequest}
-                  onView={(r) => console.log("Ver:", r.number)}
+                  onView={handleView}
                 />;
       case 'companies':
-        return <CompanyManager companies={companies} setCompanies={setCompanies} />;
+      return <CompanyManager />;
       case 'customers':
         return <CustomerManager customers={customers} setCustomers={setCustomers} />;
       case 'products':
-        return <ProductManager products={products} setProducts={setProducts} />;
+      return <ProductManager />;
       case 'observations':
         return <ObservationManager observations={observations} setObservations={setObservations} />;
       case 'expenses':
         return <ExpenseManager expenses={expenseStock} setExpenses={setExpenseStock} />;
       case 'romaneios':
         return (
-          <RomaneioGenerator 
-            companies={companies} 
-            customers={customers} 
-            stockProducts={products} 
-            expenseStock={expenseStock}
-            observations={observations}
-            onSave={addRomaneioToHistory}
+          <RomaneioGenerator
+            onSave={handleSaveRomaneio}
             initialData={clonedData}
+            expenses={expenseStock}
+            observations={observations}
           />
         );
       default:

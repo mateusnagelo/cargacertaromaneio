@@ -8,9 +8,26 @@ interface RomaneioFormProps {
   setData: React.Dispatch<React.SetStateAction<RomaneioData>>;
   totals: { products: number, expenses: number, grand: number };
   observations?: Observation[];
+  companies: any[]; // Replace with specific types if available
+  customers: any[]; // Replace with specific types if available
+  stockProducts: any[]; // Replace with specific types if available
+  expenseStock: any[]; // Replace with specific types if available
+  onAddStockProduct: (id: string) => void;
+  onAddStockExpense: (id: string) => void;
 }
 
-const RomaneioForm: React.FC<RomaneioFormProps> = ({ data, setData, totals, observations = [] }) => {
+const RomaneioForm: React.FC<RomaneioFormProps> = ({ 
+  data, 
+  setData, 
+  totals, 
+  observations = [],
+  companies = [],
+  customers = [],
+  stockProducts = [],
+  expenseStock = [],
+  onAddStockProduct,
+  onAddStockExpense
+}) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const updateField = (path: string, value: any) => {
@@ -39,32 +56,36 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({ data, setData, totals, obse
   };
 
   const addProduct = () => {
+    const currentProducts = data.products || [];
     const newProduct: Product = {
       id: Math.random().toString(36).substr(2, 9),
-      code: (data.products.length + 1).toString(),
+      code: (currentProducts.length + 1).toString(),
       description: '',
       kg: 15,
       quantity: 0,
       unitValue: 0
     };
-    setData({ ...data, products: [...data.products, newProduct] });
+    setData({ ...data, products: [...currentProducts, newProduct] });
   };
 
   const removeProduct = (id: string) => {
-    setData({ ...data, products: data.products.filter(p => p.id !== id) });
+    const currentProducts = data.products || [];
+    setData({ ...data, products: currentProducts.filter(p => p.id !== id) });
   };
 
   const updateProduct = (id: string, field: keyof Product, value: any) => {
+    const currentProducts = data.products || [];
     setData({
       ...data,
-      products: data.products.map(p => p.id === id ? { ...p, [field]: value } : p)
+      products: currentProducts.map(p => p.id === id ? { ...p, [field]: value } : p)
     });
   };
 
   const updateExpense = (id: string, field: keyof Expense, value: any) => {
+    const currentExpenses = data.expenses || [];
     setData({
       ...data,
-      expenses: data.expenses.map(e => {
+      expenses: currentExpenses.map(e => {
         if (e.id === id) {
           const updated = { ...e, [field]: value };
           if (field === 'total') updated.total = parseFloat(value) || 0;
@@ -94,21 +115,20 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({ data, setData, totals, obse
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className={labelClasses}>Nome da Empresa</label>
-              <input 
-                type="text" 
-                value={data.company.name} 
-                onChange={(e) => updateField('company.name', e.target.value)}
+              <label className={labelClasses}>Selecionar Empresa</label>
+              <select
+                value={data.company?.id || ''}
+                onChange={(e) => {
+                  const company = companies.find(c => c.id === e.target.value);
+                  if (company) {
+                    setData(prev => ({ ...prev, company: company, banking: company.banking }));
+                  }
+                }}
                 className={`${inputClasses} font-bold`}
-              />
-            </div>
-            <div>
-              <label className={labelClasses}>Unidade</label>
-              <input type="text" value={data.company.location} onChange={(e) => updateField('company.location', e.target.value)} className={inputClasses} />
-            </div>
-            <div>
-              <label className={labelClasses}>Telefone</label>
-              <input type="text" value={data.company.tel} onChange={(e) => updateField('company.tel', e.target.value)} className={inputClasses} />
+              >
+                <option value="" disabled>Selecione uma empresa</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
             <div className="sm:col-span-2">
               <label className={labelClasses}>Endereço Completo</label>
@@ -175,8 +195,20 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({ data, setData, totals, obse
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <div className="sm:col-span-2">
-            <label className={labelClasses}>Cliente</label>
-            <input type="text" value={data.client.name} onChange={(e) => updateField('client.name', e.target.value)} className={`${inputClasses} font-bold`} />
+            <label className={labelClasses}>Selecionar Cliente</label>
+            <select
+              value={data.customer?.id || ''}
+              onChange={(e) => {
+                const customer = customers.find(c => c.id === e.target.value);
+                if (customer) {
+                  setData(prev => ({ ...prev, customer: customer, client: { name: customer.name, cnpj: customer.cnpj, city: customer.city, state: customer.state } }));
+                }
+              }}
+              className={`${inputClasses} font-bold`}
+            >
+              <option value="" disabled>Selecione um cliente</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
           </div>
           <div className="sm:col-span-2">
             <label className={labelClasses}>CNPJ / CPF</label>
@@ -200,9 +232,19 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({ data, setData, totals, obse
             <div className="bg-green-50 dark:bg-green-900/30 p-2 rounded-xl text-green-500"><ShoppingCart size={20} /></div>
             <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Produtos</h2>
           </div>
-          <button onClick={addProduct} className="p-3 bg-green-600 text-white rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-100 dark:shadow-none">
-            <Plus size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <select 
+              onChange={(e) => onAddStockProduct(e.target.value)}
+              className="p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-xs font-bold outline-none"
+              defaultValue=""
+            >
+              <option value="" disabled>Adicionar do Estoque</option>
+              {stockProducts.map(p => <option key={p.id} value={p.id}>{p.description}</option>)}
+            </select>
+            <button onClick={addProduct} className="p-3 bg-green-600 text-white rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-100 dark:shadow-none">
+              <Plus size={20} />
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[700px]">
@@ -218,7 +260,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({ data, setData, totals, obse
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
-              {data.products.map((p) => (
+              {(data.products || []).map((p) => (
                 <tr key={p.id}>
                   <td className="p-2"><input type="text" value={p.code} onChange={e => updateProduct(p.id, 'code', e.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-center text-gray-900 dark:text-white" /></td>
                   <td className="p-2"><input type="text" value={p.description} onChange={e => updateProduct(p.id, 'description', e.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl font-bold text-gray-900 dark:text-white" /></td>
@@ -236,9 +278,21 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({ data, setData, totals, obse
 
       {/* Expenses */}
       <section className={`${cardClasses} overflow-hidden`}>
-        <div className="flex items-center gap-3 mb-6">
-          <div className="bg-pink-50 dark:bg-pink-900/30 p-2 rounded-xl text-pink-500"><DollarSign size={20} /></div>
-          <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Despesas Extras</h2>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="bg-pink-50 dark:bg-pink-900/30 p-2 rounded-xl text-pink-500"><DollarSign size={20} /></div>
+            <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Despesas Extras</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <select 
+              onChange={(e) => onAddStockExpense(e.target.value)}
+              className="p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-xs font-bold outline-none"
+              defaultValue=""
+            >
+              <option value="" disabled>Adicionar Despesa</option>
+              {expenseStock.map(e => <option key={e.id} value={e.id}>{e.description}</option>)}
+            </select>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
@@ -252,7 +306,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({ data, setData, totals, obse
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
-              {data.expenses.map((e) => (
+              {(data.expenses || []).map((e) => (
                 <tr key={e.id}>
                   <td className="p-2"><input type="text" value={e.code} className="w-full p-2 bg-gray-50/50 dark:bg-slate-800/50 rounded-xl text-center text-gray-500 dark:text-slate-400" readOnly /></td>
                   <td className="p-4 font-bold text-gray-600 dark:text-slate-300 uppercase">{e.description}</td>

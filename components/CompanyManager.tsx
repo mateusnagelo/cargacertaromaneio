@@ -1,12 +1,13 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Building2, Trash2, Upload, X, CreditCard, MapPin, Phone } from 'lucide-react';
+import { Plus, Building2, Trash2, Upload, X, CreditCard, MapPin, Phone, Edit3 } from 'lucide-react';
 import { CompanyInfo } from '../types';
-import { getCompanies, addCompany, deleteCompany } from '../api/companies';
+import { getCompanies, addCompany, deleteCompany, updateCompany } from '../api/companies';
 
 const CompanyManager: React.FC = () => {
   const [companies, setCompanies] = useState<CompanyInfo[]>([]);
   const [isAdding, setIsAdding] = useState(false);
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   
@@ -26,6 +27,18 @@ const CompanyManager: React.FC = () => {
       owner: ''
     }
   });
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      location: '',
+      address: '',
+      cep: '',
+      tel: '',
+      logoUrl: '',
+      banking: { bank: '', pix: '', type: 'CORRENTE', agency: '', account: '', owner: '' },
+    });
+  };
 
   useEffect(() => {
     fetchCompanies();
@@ -55,26 +68,29 @@ const CompanyManager: React.FC = () => {
   const handleSave = async () => {
     if (!formData.name) return;
     try {
-      await addCompany({
+      const payload = {
         name: formData.name,
         location: formData.location || '',
         address: formData.address || '',
         cep: formData.cep || '',
         tel: formData.tel || '',
         logoUrl: formData.logoUrl || '',
-        banking: formData.banking as any
-      });
+        banking: formData.banking as any,
+      };
+
+      if (editingCompanyId) {
+        await updateCompany(editingCompanyId, payload as any);
+      } else {
+        await addCompany(payload as any);
+      }
       fetchCompanies();
       setIsAdding(false);
-      // Reset form
-      setFormData({
-        name: '', location: '', address: '', cep: '', tel: '', logoUrl: '',
-        banking: { bank: '', pix: '', type: 'CORRENTE', agency: '', account: '', owner: '' }
-      });
+      setEditingCompanyId(null);
+      resetForm();
     } catch (error) {
-      console.error('Error adding company:', error);
+      console.error('Error saving company:', error);
       const message = error instanceof Error ? error.message : 'Erro desconhecido';
-      alert(`Erro ao cadastrar empresa: ${message}`);
+      alert(`${editingCompanyId ? 'Erro ao atualizar empresa' : 'Erro ao cadastrar empresa'}: ${message}`);
     }
   };
 
@@ -87,6 +103,21 @@ const CompanyManager: React.FC = () => {
     }
   };
 
+  const openAdd = () => {
+    setEditingCompanyId(null);
+    resetForm();
+    setIsAdding(true);
+  };
+
+  const openEdit = (company: CompanyInfo) => {
+    setEditingCompanyId(String(company.id));
+    setFormData({
+      ...company,
+      banking: company.banking || { bank: '', pix: '', type: 'CORRENTE', agency: '', account: '', owner: '' },
+    });
+    setIsAdding(true);
+  };
+
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-8">
@@ -95,7 +126,7 @@ const CompanyManager: React.FC = () => {
           <p className="text-gray-500 dark:text-slate-400">Cadastre suas empresas para emitir romaneios profissionais.</p>
         </div>
         <button 
-          onClick={() => setIsAdding(true)}
+          onClick={openAdd}
           className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
         >
           <Plus size={20} /> Adicionar Empresa
@@ -120,12 +151,20 @@ const CompanyManager: React.FC = () => {
                   <span className="text-xs text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider">{c.location}</span>
                 </div>
               </div>
-              <button 
-                onClick={() => c.id && removeCompany(c.id)}
-                className="text-gray-200 dark:text-slate-700 hover:text-red-500 p-2 transition-colors"
-              >
-                <Trash2 size={20} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => openEdit(c)}
+                  className="text-gray-200 dark:text-slate-700 hover:text-indigo-500 p-2 transition-colors"
+                >
+                  <Edit3 size={20} />
+                </button>
+                <button 
+                  onClick={() => c.id && removeCompany(c.id)}
+                  className="text-gray-200 dark:text-slate-700 hover:text-red-500 p-2 transition-colors"
+                >
+                  <Trash2 size={20} />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
@@ -169,9 +208,16 @@ const CompanyManager: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 rounded-[40px] shadow-2xl w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in duration-300 transition-colors">
             <div className="p-8 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 transition-colors">
               <h3 className="text-xl font-black text-indigo-900 dark:text-indigo-400 uppercase tracking-tight flex items-center gap-3">
-                <Building2 className="text-indigo-600 dark:text-indigo-500" /> Configurar Empresa
+                <Building2 className="text-indigo-600 dark:text-indigo-500" /> {editingCompanyId ? 'Editar Empresa' : 'Configurar Empresa'}
               </h3>
-              <button onClick={() => setIsAdding(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">
+              <button
+                onClick={() => {
+                  setIsAdding(false);
+                  setEditingCompanyId(null);
+                  resetForm();
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300"
+              >
                 <X size={24} />
               </button>
             </div>
@@ -292,7 +338,11 @@ const CompanyManager: React.FC = () => {
 
             <div className="p-8 bg-gray-50 dark:bg-slate-800 border-t border-gray-100 dark:border-slate-800 flex gap-4 transition-colors">
                <button 
-                onClick={() => setIsAdding(false)}
+                onClick={() => {
+                  setIsAdding(false);
+                  setEditingCompanyId(null);
+                  resetForm();
+                }}
                 className="flex-1 py-4 rounded-2xl text-gray-500 dark:text-slate-400 font-black uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-slate-700 transition-all"
               >
                 Cancelar
@@ -301,7 +351,7 @@ const CompanyManager: React.FC = () => {
                 onClick={handleSave}
                 className="flex-1 py-4 rounded-2xl bg-indigo-600 text-white font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 dark:shadow-none"
               >
-                Cadastrar Empresa
+                {editingCompanyId ? 'Salvar Alterações' : 'Cadastrar Empresa'}
               </button>
             </div>
           </div>

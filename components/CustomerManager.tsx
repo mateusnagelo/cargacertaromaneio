@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, Trash2, Search, MapPin } from 'lucide-react';
+import { Plus, Users, Trash2, Search, MapPin, Edit2 } from 'lucide-react';
 import { Customer } from '../types';
-import { getCustomers, addCustomer, deleteCustomer } from '../api/customers';
+import { getCustomers, addCustomer, deleteCustomer, updateCustomer } from '../api/customers';
 
 const CustomerManager: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<Partial<Customer>>({
     name: '', cnpj: '', city: '', state: '', address: '', neighborhood: '', ie: '/'
@@ -38,6 +39,26 @@ const CustomerManager: React.FC = () => {
     }
   };
 
+  const openCreate = () => {
+    setEditingId(null);
+    setFormData({ name: '', cnpj: '', city: '', state: '', address: '', neighborhood: '', ie: '/' });
+    setIsAdding(true);
+  };
+
+  const openEdit = (c: Customer) => {
+    setEditingId(c.id);
+    setFormData({
+      name: c.name || '',
+      cnpj: c.cnpj || '',
+      ie: c.ie || '/',
+      neighborhood: c.neighborhood || '',
+      city: c.city || '',
+      address: c.address || '',
+      state: c.state || '',
+    });
+    setIsAdding(true);
+  };
+
   const handleSave = async () => {
     if (!formData.name) return;
     const controller = new AbortController();
@@ -47,18 +68,27 @@ const CustomerManager: React.FC = () => {
       const cityState = [formData.city, formData.state].filter(Boolean).join('/');
       const fullAddress = cityState ? `${addressBase} - ${cityState}` : addressBase;
 
-      await addCustomer({
-        name: formData.name,
-        cnpj: formData.cnpj || '',
-        ie: formData.ie || '/',
-        neighborhood: formData.neighborhood || '',
-        city: formData.city || '',
-        address: fullAddress,
-        state: formData.state || '',
-      }, controller.signal);
+      if (editingId) {
+        await updateCustomer(editingId, {
+          name: formData.name,
+          cnpj: formData.cnpj || '',
+          address: fullAddress,
+        }, controller.signal);
+      } else {
+        await addCustomer({
+          name: formData.name,
+          cnpj: formData.cnpj || '',
+          ie: formData.ie || '/',
+          neighborhood: formData.neighborhood || '',
+          city: formData.city || '',
+          address: fullAddress,
+          state: formData.state || '',
+        }, controller.signal);
+      }
       fetchCustomers(controller.signal); // Refresh list
       setFormData({ name: '', cnpj: '', city: '', state: '', address: '', neighborhood: '', ie: '/' });
       setIsAdding(false);
+      setEditingId(null);
     } catch (error: any) {
       if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
         console.error('Error adding customer:', error);
@@ -91,7 +121,7 @@ const CustomerManager: React.FC = () => {
           <p className="text-gray-500 dark:text-slate-400">Administre sua base de clientes para emissão rápida de romaneios.</p>
         </div>
         <button 
-          onClick={() => setIsAdding(true)}
+          onClick={openCreate}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 dark:shadow-none"
         >
           <Plus size={20} /> Novo Cliente
@@ -113,12 +143,22 @@ const CustomerManager: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
           {filtered.map(c => (
             <div key={c.id} className="border border-gray-100 dark:border-slate-800 rounded-2xl p-4 hover:shadow-md dark:hover:bg-slate-800/50 transition-all group relative bg-white dark:bg-slate-900">
-              <button 
-                onClick={() => removeCustomer(c.id)}
-                className="absolute top-4 right-4 text-gray-300 dark:text-slate-700 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-              >
-                <Trash2 size={16} />
-              </button>
+              <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => openEdit(c)}
+                  className="text-gray-300 dark:text-slate-700 hover:text-blue-600 transition-colors"
+                  title="Editar cliente"
+                >
+                  <Edit2 size={16} />
+                </button>
+                <button 
+                  onClick={() => removeCustomer(c.id)}
+                  className="text-gray-300 dark:text-slate-700 hover:text-red-500 transition-colors"
+                  title="Excluir cliente"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
               <div className="flex items-center gap-3 mb-3">
                 <div className="bg-blue-50 dark:bg-blue-900/20 p-2.5 rounded-xl">
                   <Users className="text-blue-600 dark:text-blue-400" size={20} />
@@ -152,7 +192,7 @@ const CustomerManager: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-gray-100 dark:border-slate-800 bg-blue-50 dark:bg-blue-900/20">
               <h3 className="text-lg font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2">
-                <Users className="text-blue-600 dark:text-blue-500" /> Cadastrar Novo Cliente
+                <Users className="text-blue-600 dark:text-blue-500" /> {editingId ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}
               </h3>
             </div>
             <div className="p-6 grid grid-cols-2 gap-4">
@@ -225,7 +265,10 @@ const CustomerManager: React.FC = () => {
             </div>
             <div className="p-6 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 flex gap-3">
               <button 
-                onClick={() => setIsAdding(false)}
+                onClick={() => {
+                  setIsAdding(false);
+                  setEditingId(null);
+                }}
                 className="flex-1 py-2.5 rounded-xl text-gray-500 dark:text-slate-400 font-bold hover:bg-gray-100 dark:hover:bg-slate-800 transition-all"
               >
                 Cancelar

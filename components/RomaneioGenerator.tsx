@@ -31,7 +31,19 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
   const [observations, setObservations] = useState<Observation[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [romaneio, setRomaneio] = useState<RomaneioData>(initialData || DEFAULT_ROMANEIO);
+  const normalizeRomaneio = (input?: RomaneioData | null): RomaneioData => {
+    const base: RomaneioData = { ...DEFAULT_ROMANEIO };
+    if (!input) return base;
+    const merged: any = { ...base, ...input };
+    merged.company = input.company ?? base.company;
+    merged.client = input.client ?? base.client;
+    merged.banking = (input as any).banking ?? (input.company?.banking ?? base.banking);
+    merged.products = Array.isArray((input as any).products) ? (input as any).products : [];
+    merged.expenses = Array.isArray((input as any).expenses) ? (input as any).expenses : [];
+    return merged as RomaneioData;
+  };
+
+  const [romaneio, setRomaneio] = useState<RomaneioData>(() => normalizeRomaneio(initialData || null));
   const [isExpenseManagerOpen, setIsExpenseManagerOpen] = useState(false);
   const [isObservationManagerOpen, setIsObservationManagerOpen] = useState(false);
 
@@ -75,7 +87,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
 
   useEffect(() => {
     if (initialData) {
-      setRomaneio({ ...initialData });
+      setRomaneio(normalizeRomaneio(initialData));
     }
   }, [initialData]);
 
@@ -105,12 +117,14 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
   const totals = useMemo(() => {
     const productsTotal = (romaneio.products || []).reduce((acc, p) => acc + ((p.quantity || 0) * (p.unitValue || 0)), 0);
     const expensesTotal = (romaneio.expenses || []).reduce((acc, e) => acc + (Number(e.total) || 0), 0);
+    const dbGrand = Number((romaneio as any)?.montante_total ?? (romaneio as any)?.total_value ?? 0) || 0;
+    const itemsGrand = productsTotal + expensesTotal;
     return {
       products: productsTotal,
       expenses: expensesTotal,
-      grand: productsTotal + expensesTotal
+      grand: itemsGrand > 0 ? itemsGrand : dbGrand
     };
-  }, [romaneio.products, romaneio.expenses]);
+  }, [romaneio.products, romaneio.expenses, (romaneio as any)?.montante_total, (romaneio as any)?.total_value]);
 
   const handlePrint = () => {
     const originalTitle = document.title;
@@ -149,7 +163,8 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
     } catch (error: any) {
       if (error.name !== 'AbortError') {
         console.error('Failed to save romaneio:', error);
-        alert('Erro ao salvar o romaneio. Verifique o console para mais detalhes.');
+        const message = error instanceof Error ? error.message : String(error);
+        alert(`Erro ao salvar o romaneio: ${message}`);
       }
     }
   };
@@ -192,10 +207,10 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
         <div>
            <div className="flex items-center gap-2">
              <h2 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight">
-               {initialData ? 'Clonagem de Romaneio' : 'Emissor de Romaneio'}
+               {initialData ? 'Reimpressão de Romaneio' : 'Emissor de Romaneio'}
              </h2>
              {initialData && (
-               <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Modo Clone</span>
+               <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Modo Visualização</span>
              )}
            </div>
            <p className="text-xs text-gray-400 dark:text-slate-500">Monte o pedido e registre no histórico.</p>
@@ -328,11 +343,11 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
                  <p className="text-2xl font-black text-green-600 dark:text-green-400 leading-none">{formatCurrency(totals.grand)}</p>
                </div>
                <div className="hidden sm:block border-l border-gray-100 dark:border-slate-800 pl-8">
-                 <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase block mb-1">Itens Adicionados</span>
-                 <p className="text-lg font-bold text-gray-800 dark:text-slate-200 leading-none">
-                    {romaneio.products.length} Prod. / {romaneio.expenses.length} Desp.
-                 </p>
-               </div>
+                <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase block mb-1">Itens Adicionados</span>
+                <p className="text-lg font-bold text-gray-800 dark:text-slate-200 leading-none">
+                   {(romaneio.products?.length || 0)} Prod. / {(romaneio.expenses?.length || 0)} Desp.
+                </p>
+              </div>
             </div>
             <button 
               onClick={() => processSave('CONCLUÍDO')} 

@@ -101,7 +101,9 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     const expensesTotal = Array.isArray(r.expenses)
       ? r.expenses.reduce((eAcc, e) => eAcc + (Number(e.total) || 0), 0)
       : 0;
-    const total = productsTotal + expensesTotal;
+    const totalFromItems = productsTotal + expensesTotal;
+    const totalFromDb = Number((r as any)?.montante_total ?? (r as any)?.total_value ?? 0) || 0;
+    const total = totalFromItems > 0 ? totalFromItems : totalFromDb;
     if (r.status === 'CONCLUÍDO') acc.concluido += total;
     if (r.status === 'PENDENTE' || !r.status) acc.pendente += total;
     return acc;
@@ -222,13 +224,15 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
               {filtered.map(r => {
                 const pSum = Array.isArray(r.products) ? r.products.reduce((acc, p) => acc + (p.quantity * p.unitValue), 0) : 0;
                 const eSum = Array.isArray(r.expenses) ? r.expenses.reduce((acc, e) => acc + (Number(e.total) || 0), 0) : 0;
-                const total = pSum + eSum;
+                const totalFromItems = pSum + eSum;
+                const totalFromDb = Number((r as any)?.montante_total ?? (r as any)?.total_value ?? 0) || 0;
+                const total = totalFromItems > 0 ? totalFromItems : totalFromDb;
                 
                 return (
                   <tr key={r.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-800/50 transition-all">
                     <td className="px-6 py-5">
                       <div className="flex flex-col">
-                        <span className="text-sm font-black text-gray-800 dark:text-white">#{r.number}</span>
+                        <span className="text-sm font-black text-gray-800 dark:text-white">#{r.number || (r as any)?.guia || (r as any)?.numero || ''}</span>
                         <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold truncate max-w-[120px]">{r.company?.name}</span>
                       </div>
                     </td>
@@ -241,7 +245,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
                       </div>
                     </td>
                     <td className="px-6 py-5 text-center">
-                      <span className="text-[10px] font-bold text-gray-500 dark:text-slate-500">{formatDate(r.saleDate || r.emissionDate)}</span>
+                      <span className="text-[10px] font-bold text-gray-500 dark:text-slate-500">{formatDate(r.saleDate || r.emissionDate || (r as any)?.data_de_emissao)}</span>
                     </td>
                     <td className="px-6 py-5">
                       <span className="text-sm font-black text-gray-800 dark:text-white">{formatCurrency(total)}</span>

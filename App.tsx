@@ -35,6 +35,7 @@ const App: React.FC = () => {
     return localStorage.getItem('bb_auth') === 'true';
   });
   const [activeScreen, setActiveScreen] = useState<Screen>('tracking');
+  const [selectedRomaneio, setSelectedRomaneio] = useState<RomaneioData | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('bb_theme');
@@ -66,7 +67,10 @@ const App: React.FC = () => {
     switch (activeScreen) {
       case 'tracking':
         return <RomaneioTracking 
-                  onView={() => {}}
+                  onView={(romaneio) => {
+                    setSelectedRomaneio(romaneio);
+                    setActiveScreen('romaneios');
+                  }}
                 />;
       case 'companies':
       return <CompanyManager />;
@@ -82,8 +86,10 @@ const App: React.FC = () => {
         return (
           <RomaneioGenerator
             onSave={() => {
+              setSelectedRomaneio(null);
               setActiveScreen('tracking');
             }}
+            initialData={selectedRomaneio}
           />
         );
       default:

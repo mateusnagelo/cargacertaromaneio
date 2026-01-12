@@ -63,7 +63,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     }
   };
 
-  const updateStatus = async (id: number, status: RomaneioStatus) => {
+  const updateStatus = async (id: string, status: RomaneioStatus) => {
     try {
       await updateStatusAPI(id, status);
       fetchRomaneios(); // Re-fetch to get the latest data
@@ -72,7 +72,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     }
   };
 
-  const deleteRomaneio = async (id: number) => {
+  const deleteRomaneio = async (id: string) => {
     if (window.confirm('Tem certeza que deseja deletar este romaneio?')) {
       try {
         await deleteRomaneioAPI(id);

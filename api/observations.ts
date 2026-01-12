@@ -1,9 +1,26 @@
-import { supabase } from '../../supabaseClient';
-import { Observation } from '../../types';
+import { supabase } from '../supabaseClient';
+import { Observation } from '../types';
+
+const applyAbortSignal = (query: any, signal?: AbortSignal) => {
+  if (signal && typeof query?.abortSignal === 'function') return query.abortSignal(signal);
+  return query;
+};
+
+const throwQueryError = (error: any) => {
+  if (!error) return;
+  const msg = String(error.message || error);
+  if (msg.includes('AbortError') || msg.includes('signal is aborted')) {
+    const e: any = new Error(msg);
+    e.name = 'AbortError';
+    throw e;
+  }
+  throw new Error(msg);
+};
 
 export const getObservations = async (signal?: AbortSignal): Promise<Observation[]> => {
-  const { data, error } = await supabase.from('observations').select('*').abortSignal(signal);
-  if (error) throw new Error(error.message);
+  const query = supabase.from('observations').select('*');
+  const { data, error } = await applyAbortSignal(query, signal);
+  throwQueryError(error);
   return data;
 };
 

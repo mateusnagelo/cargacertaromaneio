@@ -3,6 +3,7 @@ export type RomaneioStatus = 'PENDENTE' | 'CONCLUÍDO' | 'CANCELADO';
 
 export interface CompanyInfo {
   id: string;
+  created_at?: string;
   name: string;
   location: string;
   address: string;
@@ -42,6 +43,7 @@ export interface ProductStock {
 
 export interface ExpenseStock {
   id: string;
+  created_at?: string;
   code: string;
   description: string;
   defaultUnitValue?: number;
@@ -49,6 +51,7 @@ export interface ExpenseStock {
 
 export interface Observation {
   id: string;
+  created_at?: string;
   title: string;
   content: string;
 }

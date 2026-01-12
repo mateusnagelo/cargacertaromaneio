@@ -1,38 +1,95 @@
 
-import React, { useState } from 'react';
-import { Plus, DollarSign, Trash2, Search, Tag } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, DollarSign, Trash2, Search, Tag, Edit2 } from 'lucide-react';
 import { ExpenseStock } from '../types';
 import { formatCurrency } from '../utils';
+import { getExpenses, addExpense, deleteExpense, updateExpense } from '../api/expenses';
 
-interface Props {
-  expenses: ExpenseStock[];
-  setExpenses: React.Dispatch<React.SetStateAction<ExpenseStock[]>>;
-}
-
-const ExpenseManager: React.FC<Props> = ({ expenses, setExpenses }) => {
+const ExpenseManager: React.FC = () => {
+  const [expenses, setExpenses] = useState<ExpenseStock[]>([]);
   const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<Partial<ExpenseStock>>({
     code: '',
     description: '',
     defaultUnitValue: 0
   });
+  const [loading, setLoading] = useState(true);
 
-  const handleSave = () => {
-    if (!formData.description || !formData.code) return;
-    const newExpense: ExpenseStock = {
-      id: Math.random().toString(36).substr(2, 9),
-      code: formData.code,
-      description: formData.description.toUpperCase(),
-      defaultUnitValue: formData.defaultUnitValue || 0
+  useEffect(() => {
+    const abortController = new AbortController();
+    fetchExpenses(abortController.signal);
+
+    return () => {
+      abortController.abort();
     };
-    setExpenses([...expenses, newExpense]);
-    setFormData({ code: '', description: '', defaultUnitValue: 0 });
-    setIsAdding(false);
+  }, []);
+
+  const fetchExpenses = async (signal?: AbortSignal) => {
+    try {
+      setLoading(true);
+      const data = await getExpenses(signal);
+      setExpenses(data);
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error('Error fetching expenses:', error);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const removeExpense = (id: string) => {
-    setExpenses(expenses.filter(e => e.id !== id));
+  const openCreate = () => {
+    setEditingId(null);
+    setFormData({ code: '', description: '', defaultUnitValue: 0 });
+    setIsAdding(true);
+  };
+
+  const openEdit = (e: ExpenseStock) => {
+    setEditingId(e.id);
+    setFormData({
+      code: e.code,
+      description: e.description,
+      defaultUnitValue: e.defaultUnitValue ?? 0
+    });
+    setIsAdding(true);
+  };
+
+  const handleSave = async () => {
+    if (!formData.description || !formData.code) return;
+    try {
+      if (editingId) {
+        await updateExpense(editingId, {
+          code: formData.code,
+          description: formData.description.toUpperCase(),
+          defaultUnitValue: formData.defaultUnitValue || 0
+        });
+      } else {
+        await addExpense({
+          code: formData.code,
+          description: formData.description.toUpperCase(),
+          defaultUnitValue: formData.defaultUnitValue || 0
+        });
+      }
+      fetchExpenses();
+      setFormData({ code: '', description: '', defaultUnitValue: 0 });
+      setEditingId(null);
+      setIsAdding(false);
+    } catch (error) {
+      console.error('Error saving expense:', error);
+    }
+  };
+
+  const removeExpense = async (id: string) => {
+    if (window.confirm('Tem certeza que deseja excluir esta despesa?')) {
+      try {
+        await deleteExpense(id);
+        fetchExpenses();
+      } catch (error) {
+        console.error('Error deleting expense:', error);
+      }
+    }
   };
 
   const filtered = expenses.filter(e => 
@@ -48,7 +105,7 @@ const ExpenseManager: React.FC<Props> = ({ expenses, setExpenses }) => {
           <p className="text-gray-500 dark:text-slate-400">Configure os modelos de despesas recorrentes (Fretes, Seguros, Taxas).</p>
         </div>
         <button 
-          onClick={() => setIsAdding(true)}
+          onClick={openCreate}
           className="bg-pink-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-pink-700 transition-all shadow-lg shadow-pink-200 dark:shadow-none"
         >
           <Plus size={20} /> Novo Modelo
@@ -70,12 +127,22 @@ const ExpenseManager: React.FC<Props> = ({ expenses, setExpenses }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
           {filtered.map(e => (
             <div key={e.id} className="group relative border border-gray-100 dark:border-slate-800 rounded-2xl p-5 hover:border-pink-200 dark:hover:border-pink-800 hover:shadow-xl hover:shadow-pink-50 dark:hover:shadow-none transition-all bg-white dark:bg-slate-900">
-              <button 
-                onClick={() => removeExpense(e.id)}
-                className="absolute top-4 right-4 text-gray-300 dark:text-slate-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-              >
-                <Trash2 size={16} />
-              </button>
+              <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                <button
+                  onClick={() => openEdit(e)}
+                  className="text-gray-300 dark:text-slate-700 hover:text-pink-600 p-1.5"
+                  title="Editar despesa"
+                >
+                  <Edit2 size={16} />
+                </button>
+                <button 
+                  onClick={() => removeExpense(e.id)}
+                  className="text-gray-300 dark:text-slate-700 hover:text-red-500 p-1.5"
+                  title="Excluir despesa"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
               
               <div className="flex items-center gap-3 mb-4">
                 <div className="bg-pink-50 dark:bg-pink-900/20 p-3 rounded-xl">
@@ -108,7 +175,7 @@ const ExpenseManager: React.FC<Props> = ({ expenses, setExpenses }) => {
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200 transition-colors">
             <div className="p-6 border-b border-gray-100 dark:border-slate-800 bg-pink-50 dark:bg-pink-900/20">
               <h3 className="text-lg font-bold text-pink-800 dark:text-pink-400 flex items-center gap-2">
-                <DollarSign className="text-pink-600 dark:text-pink-500" /> Novo Modelo de Despesa
+                <DollarSign className="text-pink-600 dark:text-pink-500" /> {editingId ? 'Editar Modelo de Despesa' : 'Novo Modelo de Despesa'}
               </h3>
             </div>
             <div className="p-6 space-y-4 bg-white dark:bg-slate-900">
@@ -146,7 +213,10 @@ const ExpenseManager: React.FC<Props> = ({ expenses, setExpenses }) => {
             </div>
             <div className="p-6 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 flex gap-3 transition-colors">
               <button 
-                onClick={() => setIsAdding(false)}
+                onClick={() => {
+                  setIsAdding(false);
+                  setEditingId(null);
+                }}
                 className="flex-1 py-3 rounded-xl text-gray-500 dark:text-slate-400 font-bold hover:bg-gray-200 dark:hover:bg-slate-800 transition-all"
               >
                 Cancelar
@@ -155,7 +225,7 @@ const ExpenseManager: React.FC<Props> = ({ expenses, setExpenses }) => {
                 onClick={handleSave}
                 className="flex-1 py-3 rounded-xl bg-pink-600 text-white font-bold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100 dark:shadow-none"
               >
-                Salvar Modelo
+                Salvar
               </button>
             </div>
           </div>

@@ -73,10 +73,12 @@ const CompanyManager: React.FC = () => {
       });
     } catch (error) {
       console.error('Error adding company:', error);
+      const message = error instanceof Error ? error.message : 'Erro desconhecido';
+      alert(`Erro ao cadastrar empresa: ${message}`);
     }
   };
 
-  const removeCompany = async (id: number) => {
+  const removeCompany = async (id: string) => {
     try {
       await deleteCompany(id);
       fetchCompanies();

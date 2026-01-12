@@ -14,6 +14,8 @@ interface RomaneioFormProps {
   expenseStock: any[]; // Replace with specific types if available
   onAddStockProduct: (id: string) => void;
   onAddStockExpense: (id: string) => void;
+  onOpenExpenseManager?: () => void;
+  onOpenObservationManager?: () => void;
 }
 
 const RomaneioForm: React.FC<RomaneioFormProps> = ({ 
@@ -26,9 +28,18 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
   stockProducts = [],
   expenseStock = [],
   onAddStockProduct,
-  onAddStockExpense
+  onAddStockExpense,
+  onOpenExpenseManager,
+  onOpenObservationManager
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const parseDecimal = (value: any) => {
+    if (value === null || value === undefined) return 0;
+    const normalized = String(value).replace(/\s/g, '').replace(',', '.');
+    const n = parseFloat(normalized);
+    return Number.isFinite(n) ? n : 0;
+  };
 
   const updateField = (path: string, value: any) => {
     const newData = { ...data };
@@ -88,12 +99,22 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
       expenses: currentExpenses.map(e => {
         if (e.id === id) {
           const updated = { ...e, [field]: value };
-          if (field === 'total') updated.total = parseFloat(value) || 0;
+          if (field === 'total') {
+            updated.total = parseDecimal(value);
+          }
+          if (field === 'quantity' || field === 'unitValue') {
+            updated.total = parseDecimal(updated.quantity) * parseDecimal(updated.unitValue);
+          }
           return updated;
         }
         return e;
       })
     });
+  };
+
+  const removeExpense = (id: string) => {
+    const currentExpenses = data.expenses || [];
+    setData({ ...data, expenses: currentExpenses.filter(e => e.id !== id) });
   };
 
   const selectObservation = (content: string) => {
@@ -292,6 +313,16 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
               <option value="" disabled>Adicionar Despesa</option>
               {expenseStock.map(e => <option key={e.id} value={e.id}>{e.description}</option>)}
             </select>
+            {onOpenExpenseManager && (
+              <button
+                type="button"
+                onClick={onOpenExpenseManager}
+                className="p-3 bg-pink-600 text-white rounded-2xl hover:bg-pink-700 transition-all shadow-lg shadow-pink-100 dark:shadow-none"
+                title="Gerenciar catálogo de despesas"
+              >
+                <Plus size={20} />
+              </button>
+            )}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -303,16 +334,18 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
                 <th className="px-4 py-3 w-24">Qtd</th>
                 <th className="px-4 py-3 w-32 text-right">Unitário</th>
                 <th className="px-4 py-3 w-32 text-right">Total</th>
+                <th className="px-4 py-3 w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
               {(data.expenses || []).map((e) => (
                 <tr key={e.id}>
-                  <td className="p-2"><input type="text" value={e.code} className="w-full p-2 bg-gray-50/50 dark:bg-slate-800/50 rounded-xl text-center text-gray-500 dark:text-slate-400" readOnly /></td>
-                  <td className="p-4 font-bold text-gray-600 dark:text-slate-300 uppercase">{e.description}</td>
+                  <td className="p-2"><input type="text" value={e.code} onChange={v => updateExpense(e.id, 'code', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-center text-gray-900 dark:text-white" /></td>
+                  <td className="p-2"><input type="text" value={e.description} onChange={v => updateExpense(e.id, 'description', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-left text-gray-900 dark:text-white font-bold uppercase" /></td>
                   <td className="p-2"><input type="text" value={e.quantity} onChange={v => updateExpense(e.id, 'quantity', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-center text-gray-900 dark:text-white" /></td>
                   <td className="p-2"><input type="text" value={e.unitValue} onChange={v => updateExpense(e.id, 'unitValue', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-right text-gray-900 dark:text-white" /></td>
                   <td className="p-2"><input type="number" step="0.01" value={e.total} onChange={v => updateExpense(e.id, 'total', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-right font-black text-gray-900 dark:text-white" /></td>
+                  <td className="p-2"><button onClick={() => removeExpense(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button></td>
                 </tr>
               ))}
             </tbody>
@@ -327,21 +360,33 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
             <div className="bg-cyan-50 dark:bg-cyan-900/30 p-2 rounded-xl text-cyan-500"><MessageSquareText size={20} /></div>
             <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Observações ao Cliente</h2>
           </div>
-          {observations.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black text-gray-400 uppercase">Aplicar Modelo:</span>
-              <select 
-                className="p-2 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-[10px] font-bold outline-none text-cyan-600 uppercase"
-                onChange={(e) => selectObservation(e.target.value)}
-                defaultValue=""
+          <div className="flex items-center gap-2">
+            {observations.length > 0 && (
+              <>
+                <span className="text-[9px] font-black text-gray-400 uppercase">Aplicar Modelo:</span>
+                <select 
+                  className="p-2 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-[10px] font-bold outline-none text-cyan-600 uppercase"
+                  onChange={(e) => selectObservation(e.target.value)}
+                  defaultValue=""
+                >
+                  <option value="" disabled>Escolher...</option>
+                  {observations.map(obs => (
+                    <option key={obs.id} value={obs.content}>{obs.title}</option>
+                  ))}
+                </select>
+              </>
+            )}
+            {onOpenObservationManager && (
+              <button
+                type="button"
+                onClick={onOpenObservationManager}
+                className="p-2.5 bg-cyan-600 text-white rounded-xl hover:bg-cyan-700 transition-all shadow-lg shadow-cyan-100 dark:shadow-none"
+                title="Gerenciar modelos de observação"
               >
-                <option value="" disabled>Escolher...</option>
-                {observations.map(obs => (
-                  <option key={obs.id} value={obs.content}>{obs.title}</option>
-                ))}
-              </select>
-            </div>
-          )}
+                <Plus size={18} />
+              </button>
+            )}
+          </div>
         </div>
         <textarea 
           rows={6}

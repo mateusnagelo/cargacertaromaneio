@@ -36,44 +36,10 @@ const App: React.FC = () => {
   });
   const [activeScreen, setActiveScreen] = useState<Screen>('tracking');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [clonedData, setClonedData] = useState<RomaneioData | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('bb_theme');
     return saved === 'dark';
   });
-
-  // Global State (Persisted in LocalStorage)
-  const [customers, setCustomers] = useState<Customer[]>(() => {
-    try {
-      const saved = localStorage.getItem('bb_customers');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-
-  const [observations, setObservations] = useState<Observation[]>(() => {
-    try {
-      const saved = localStorage.getItem('bb_observations');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [{ id: 'default', title: 'PADRÃO CARGACERTA', content: DEFAULT_OBSERVATION }];
-  });
-
-  const [expenseStock, setExpenseStock] = useState<ExpenseStock[]>(() => {
-    try {
-      const saved = localStorage.getItem('bb_expenses_stock');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      { id: '1', code: '684', description: 'SEGURO CARGA' },
-      { id: '2', code: '745', description: 'BALDEIO' },
-      { id: '3', code: '544', description: 'CAIXA MADEIRA' },
-      { id: '4', code: '692', description: 'PAPELÕES' },
-    ];
-  });
-
-  useEffect(() => { localStorage.setItem('bb_customers', JSON.stringify(customers)); }, [customers]);
-  useEffect(() => { localStorage.setItem('bb_observations', JSON.stringify(observations)); }, [observations]);
-  useEffect(() => { localStorage.setItem('bb_expenses_stock', JSON.stringify(expenseStock)); }, [expenseStock]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -96,44 +62,28 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveRomaneio = (romaneio: RomaneioData) => {
-    setClonedData(null);
-    setActiveScreen('tracking');
-  };
-
-  const handleClone = (data: RomaneioData) => {
-    setClonedData(data);
-    setActiveScreen('romaneios');
-  };
-
-  const handleView = (romaneio: RomaneioData) => {
-    setClonedData(romaneio);
-    setActiveScreen('romaneios');
-  };
-
   const renderScreen = () => {
     switch (activeScreen) {
       case 'tracking':
         return <RomaneioTracking 
-                  onView={handleView}
+                  onView={() => {}}
                 />;
       case 'companies':
       return <CompanyManager />;
       case 'customers':
-        return <CustomerManager customers={customers} setCustomers={setCustomers} />;
+        return <CustomerManager />;
       case 'products':
       return <ProductManager />;
       case 'observations':
-        return <ObservationManager observations={observations} setObservations={setObservations} />;
+        return <ObservationManager />;
       case 'expenses':
-        return <ExpenseManager expenses={expenseStock} setExpenses={setExpenseStock} />;
+        return <ExpenseManager />;
       case 'romaneios':
         return (
           <RomaneioGenerator
-            onSave={handleSaveRomaneio}
-            initialData={clonedData}
-            expenses={expenseStock}
-            observations={observations}
+            onSave={() => {
+              setActiveScreen('tracking');
+            }}
           />
         );
       default:
@@ -226,7 +176,6 @@ const App: React.FC = () => {
               <button
                 key={item.id}
                 onClick={() => {
-                  if (item.id === 'romaneios') setClonedData(null);
                   setActiveScreen(item.id as Screen);
                   setIsSidebarOpen(false);
                 }}

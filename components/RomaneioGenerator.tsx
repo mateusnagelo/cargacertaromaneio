@@ -2,32 +2,38 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { CatalogProduct, CompanyInfo, Customer, Product, RomaneioData, Expense, ExpenseStock, RomaneioStatus, Observation } from '../types';
 import { DEFAULT_ROMANEIO } from '../constants';
-import { FileDown, ChevronLeft, Edit3, Printer, Building2, Users, Package, Plus, DollarSign, Save, CheckCircle } from 'lucide-react';
+import { FileDown, ChevronLeft, Edit3, Printer, Building2, Users, Package, Plus, DollarSign, Save, CheckCircle, X } from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils';
 import RomaneioForm from './RomaneioForm';
 import RomaneioPreview from './RomaneioPreview';
+import ExpenseManager from './ExpenseManager';
+import ObservationManager from './ObservationManager';
 import { getCompanies } from '../api/companies';
 import { getCustomers } from '../api/customers';
 import { getProducts } from '../api/products';
+import { getExpenses } from '../api/expenses';
+import { getObservations } from '../api/observations';
 import { addRomaneio } from '../api/romaneios';
 
 interface Props {
-  expenseStock: ExpenseStock[];
-  observations: Observation[];
   onSave: (data: RomaneioData) => void;
   initialData?: RomaneioData | null;
 }
 
-const RomaneioGenerator: React.FC<Props> = ({ expenseStock, observations, onSave, initialData }) => {
+const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
   const [view, setView] = useState<'edit' | 'preview'>('edit');
   
   // Data fetched from API
   const [companies, setCompanies] = useState<CompanyInfo[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [stockProducts, setStockProducts] = useState<CatalogProduct[]>([]);
+  const [expenseStock, setExpenseStock] = useState<ExpenseStock[]>([]);
+  const [observations, setObservations] = useState<Observation[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [romaneio, setRomaneio] = useState<RomaneioData>(initialData || DEFAULT_ROMANEIO);
+  const [isExpenseManagerOpen, setIsExpenseManagerOpen] = useState(false);
+  const [isObservationManagerOpen, setIsObservationManagerOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -36,14 +42,18 @@ const RomaneioGenerator: React.FC<Props> = ({ expenseStock, observations, onSave
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [companiesData, customersData, productsData] = await Promise.all([
+        const [companiesData, customersData, productsData, expensesData, observationsData] = await Promise.all([
           getCompanies(signal),
           getCustomers(signal),
-          getProducts(signal)
+          getProducts(signal),
+          getExpenses(signal),
+          getObservations(signal)
         ]);
         setCompanies(companiesData);
         setCustomers(customersData);
         setStockProducts(productsData);
+        setExpenseStock(expensesData);
+        setObservations(observationsData);
 
         // Set default company if not cloning and companies are loaded
         if (!initialData && companiesData.length > 0) {
@@ -68,6 +78,26 @@ const RomaneioGenerator: React.FC<Props> = ({ expenseStock, observations, onSave
       setRomaneio({ ...initialData });
     }
   }, [initialData]);
+
+  const refreshExpenses = async () => {
+    const controller = new AbortController();
+    try {
+      const expensesData = await getExpenses(controller.signal);
+      setExpenseStock(expensesData);
+    } catch (error: any) {
+      if (error.name !== 'AbortError') console.error('Failed to refresh expenses', error);
+    }
+  };
+
+  const refreshObservations = async () => {
+    const controller = new AbortController();
+    try {
+      const observationsData = await getObservations(controller.signal);
+      setObservations(observationsData);
+    } catch (error: any) {
+      if (error.name !== 'AbortError') console.error('Failed to refresh observations', error);
+    }
+  };
 
   const activeCompany = romaneio.company;
   const activeCustomer = romaneio.customer;
@@ -214,6 +244,8 @@ const RomaneioGenerator: React.FC<Props> = ({ expenseStock, observations, onSave
             observations={observations}
             onAddStockProduct={handleAddStockProduct}
             onAddStockExpense={handleAddStockExpense}
+            onOpenExpenseManager={() => setIsExpenseManagerOpen(true)}
+            onOpenObservationManager={() => setIsObservationManagerOpen(true)}
             totals={totals}
           />
         ) : (
@@ -222,6 +254,70 @@ const RomaneioGenerator: React.FC<Props> = ({ expenseStock, observations, onSave
           </div>
         )}
       </div>
+
+      {isExpenseManagerOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] p-4 flex items-center justify-center"
+          onClick={() => {
+            setIsExpenseManagerOpen(false);
+            refreshExpenses();
+          }}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-[32px] w-full max-w-6xl h-[90vh] overflow-hidden shadow-2xl transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-widest">Catálogo de Despesas</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExpenseManagerOpen(false);
+                  refreshExpenses();
+                }}
+                className="p-2 rounded-xl text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="h-[calc(90vh-57px)] overflow-y-auto">
+              <ExpenseManager />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isObservationManagerOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] p-4 flex items-center justify-center"
+          onClick={() => {
+            setIsObservationManagerOpen(false);
+            refreshObservations();
+          }}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-[32px] w-full max-w-6xl h-[90vh] overflow-hidden shadow-2xl transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-widest">Modelos de Observação</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsObservationManagerOpen(false);
+                  refreshObservations();
+                }}
+                className="p-2 rounded-xl text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="h-[calc(90vh-57px)] overflow-y-auto">
+              <ObservationManager />
+            </div>
+          </div>
+        </div>
+      )}
 
       {view === 'edit' && (
         <div className="no-print fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-gray-100 dark:border-slate-800 p-4 shadow-2xl z-50 transition-colors">

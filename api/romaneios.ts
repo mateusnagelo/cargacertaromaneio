@@ -1,78 +1,91 @@
 import { supabase } from '../supabaseClient';
-import { RomaneioData } from '../types';
+import { RomaneioData, RomaneioStatus } from '../types';
 
-// Busca todos os romaneios com seus itens, clientes e empresas associadas
+const applyAbortSignal = (query: any, signal?: AbortSignal) => {
+  if (signal && typeof query?.abortSignal === 'function') return query.abortSignal(signal);
+  return query;
+};
+
+const throwQueryError = (error: any) => {
+  if (!error) return;
+  const msg = String(error.message || error);
+  if (msg.includes('AbortError') || msg.includes('signal is aborted')) {
+    const e: any = new Error(msg);
+    e.name = 'AbortError';
+    throw e;
+  }
+  throw new Error(msg);
+};
+
 export const getRomaneios = async (signal?: AbortSignal): Promise<RomaneioData[]> => {
-  const { data: romaneios, error } = await supabase
-    .from('romaneios')
-    .select(`
-      *,
-      customer:customers(*),
-      company:companies(*)
-    `)
-    .abortSignal(signal);
+  const tryFetch = async (select: string) => {
+    const query = supabase.from('romaneios').select(select);
+    const { data, error } = await applyAbortSignal(query, signal);
+    throwQueryError(error);
+    return (data || []) as any[];
+  };
 
-  if (error) throw new Error(error.message);
-  
-  return (romaneios || []).map((r: any) => ({
-    ...r,
-    customer: r.customer,
-    company: r.company,
-    client: r.client ?? (r.customer ? {
-      name: r.customer.name ?? '',
-      cnpj: r.customer.cnpj ?? '',
-      neighborhood: r.customer.neighborhood ?? '',
-      ie: r.customer.ie ?? '/',
-      city: r.customer.city ?? '',
-      address: r.customer.address ?? '',
-      state: r.customer.state ?? '',
-    } : undefined),
-  })) as RomaneioData[];
+  let rows: any[] = [];
+  try {
+    rows = await tryFetch('*, company:companies(*), customer:customers(*)');
+  } catch (err: any) {
+    const msg = String(err?.message || '');
+    if (msg.includes('Could not find a relationship') || msg.includes('schema cache')) {
+      rows = await tryFetch('*');
+    } else {
+      throw err;
+    }
+  }
+
+  return rows.map((r) => {
+    const merged: any = { ...r };
+
+    if (!merged.client && merged.customer) merged.client = merged.customer;
+    if (!merged.customer && merged.client) merged.customer = merged.client;
+
+    if (Array.isArray(merged.items) && !Array.isArray(merged.products)) {
+      merged.products = merged.items;
+    }
+    if (Array.isArray(merged.romaneio_expenses) && !Array.isArray(merged.expenses)) {
+      merged.expenses = merged.romaneio_expenses;
+    }
+
+    return merged as RomaneioData;
+  });
 };
 
-// Adiciona um novo romaneio e seus itens
-export const addRomaneio = async (romaneioData: Omit<RomaneioData, 'id' | 'created_at'>, signal?: AbortSignal) => {
-  const { company, customer, companyId, customerId, ...romaneioInfo } = romaneioData as any;
+export const addRomaneio = async (
+  romaneio: Omit<RomaneioData, 'id' | 'created_at'>,
+  signal?: AbortSignal
+) => {
+  const payload: any = { ...romaneio };
 
-  const { data: newRomaneio, error: romaneioError } = await supabase
+  if (typeof payload.number === 'string') {
+    const asNumber = Number(payload.number);
+    if (!Number.isFinite(asNumber)) payload.number = null;
+  }
+
+  const query = supabase
     .from('romaneios')
-    .insert([{
-      ...romaneioInfo,
-    }])
-    .select()
-    .abortSignal(signal)
+    .insert([payload])
+    .select('*')
     .single();
+  const { data, error } = await applyAbortSignal(query, signal);
 
-  if (romaneioError) {
-    console.error('Error adding romaneio:', romaneioError);
-    throw new Error(romaneioError.message);
-  }
+  throwQueryError(error);
+  if (!data) throw new Error('Failed to create romaneio');
 
-  if (!newRomaneio) {
-    throw new Error('Failed to create romaneio, no data returned.');
-  }
-
-  return newRomaneio;
+  return data as any;
 };
 
-// Deleta um romaneio e seus itens (usando cascade no DB)
-export const deleteRomaneio = async (id: number) => {
-  const { error } = await supabase
-    .from('romaneios')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw new Error(error.message);
+export const deleteRomaneio = async (id: string, signal?: AbortSignal): Promise<void> => {
+  const query = supabase.from('romaneios').delete().eq('id', id);
+  const { error } = await applyAbortSignal(query, signal);
+  throwQueryError(error);
 };
 
-// Atualiza o status de um romaneio
-export const updateRomaneioStatus = async (id: number, status: string) => {
-    const { data, error } = await supabase
-        .from('romaneios')
-        .update({ status })
-        .eq('id', id)
-        .select();
-
-    if (error) throw new Error(error.message);
-    return data;
-}
+export const updateRomaneioStatus = async (id: string, status: RomaneioStatus, signal?: AbortSignal): Promise<void> => {
+  const query = supabase.from('romaneios').update({ status }).eq('id', id);
+  const { error } = await applyAbortSignal(query, signal);
+  throwQueryError(error);
+};

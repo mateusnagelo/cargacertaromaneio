@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, MessageSquareText, Trash2, Search, FileText, X, Save, Edit2 } from 'lucide-react';
 import { Observation } from '../types';
-import { getObservations, addObservation, updateObservation, deleteObservation } from '../src/api/observations';
+import { getObservations, addObservation, updateObservation, deleteObservation } from '../api/observations';
 
 const ObservationManager: React.FC = () => {
   const [observations, setObservations] = useState<Observation[]>([]);

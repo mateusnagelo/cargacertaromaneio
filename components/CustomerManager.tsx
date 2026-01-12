@@ -42,13 +42,18 @@ const CustomerManager: React.FC = () => {
     if (!formData.name) return;
     const controller = new AbortController();
     try {
+      const addressParts = [formData.address, formData.neighborhood].filter(Boolean);
+      const addressBase = addressParts.join(', ');
+      const cityState = [formData.city, formData.state].filter(Boolean).join('/');
+      const fullAddress = cityState ? `${addressBase} - ${cityState}` : addressBase;
+
       await addCustomer({
         name: formData.name,
         cnpj: formData.cnpj || '',
         ie: formData.ie || '/',
         neighborhood: formData.neighborhood || '',
         city: formData.city || '',
-        address: formData.address || '',
+        address: fullAddress,
         state: formData.state || '',
       }, controller.signal);
       fetchCustomers(controller.signal); // Refresh list

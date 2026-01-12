@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { CatalogProduct, CompanyInfo, Customer, Product, RomaneioData, Expense, ExpenseStock, RomaneioStatus, Observation } from '../types';
 import { DEFAULT_ROMANEIO } from '../constants';
-import { FileDown, ChevronLeft, Edit3, Printer, Building2, Users, Package, Plus, DollarSign, Save, CheckCircle, X } from 'lucide-react';
+import { FileDown, ChevronLeft, Edit3, Building2, Users, Package, Plus, DollarSign, Save, CheckCircle, X } from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils';
 import RomaneioForm from './RomaneioForm';
 import RomaneioPreview from './RomaneioPreview';
@@ -126,20 +126,154 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
     };
   }, [romaneio.products, romaneio.expenses, (romaneio as any)?.montante_total, (romaneio as any)?.total_value]);
 
-  const handlePrint = () => {
-    const originalTitle = document.title;
-    const fileName = `Romaneio_${romaneio.number}_${romaneio.client?.name || 'Venda'}`;
-    document.title = fileName;
-    
-    if (view === 'edit') {
-      setView('preview');
-      setTimeout(() => {
-        window.print();
-        document.title = originalTitle;
-      }, 300);
-    } else {
-      window.print();
-      document.title = originalTitle;
+  const waitForPrintLayout = async (container: HTMLElement) => {
+    const img = container.querySelector('img') as HTMLImageElement | null;
+    const imgReady =
+      img && !img.complete
+        ? new Promise<void>((resolve) => {
+            const done = () => resolve();
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', done, { once: true });
+          })
+        : Promise.resolve();
+
+    const fontsReady = (document as any).fonts?.ready ? (document as any).fonts.ready : Promise.resolve();
+    await Promise.all([imgReady, fontsReady]);
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+  };
+
+  const computeAndApplyA4PrintScale = async () => {
+    const container = document.querySelector('.print-container') as HTMLElement | null;
+    const scaleTarget = document.querySelector('.print-scale') as HTMLElement | null;
+    if (!container || !scaleTarget) return () => {};
+
+    const prev = {
+      minHeight: container.style.minHeight,
+      height: container.style.height,
+      width: container.style.width,
+      maxWidth: container.style.maxWidth,
+    };
+
+    const probe = document.createElement('div');
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    probe.style.top = '0';
+    probe.style.left = '0';
+    probe.style.width = '210mm';
+    probe.style.height = '297mm';
+    document.body.appendChild(probe);
+    const pageRect = probe.getBoundingClientRect();
+    probe.remove();
+
+    container.style.minHeight = '0';
+    container.style.height = 'auto';
+    container.style.width = '210mm';
+    container.style.maxWidth = '210mm';
+
+    document.documentElement.style.setProperty('--print-scale', '1');
+    await waitForPrintLayout(scaleTarget);
+
+    let scale = 1;
+    for (let i = 0; i < 8; i++) {
+      const contentHeight = scaleTarget.scrollHeight;
+      const contentWidth = scaleTarget.scrollWidth;
+
+      let next = 1;
+      if (pageRect.height > 0 && contentHeight > 0) next = Math.min(next, pageRect.height / contentHeight);
+      if (pageRect.width > 0 && contentWidth > 0) next = Math.min(next, pageRect.width / contentWidth);
+
+      next = Math.min(1, Math.max(0.3, next * 0.99));
+      if (Math.abs(next - scale) < 0.01) break;
+      scale = next;
+      document.documentElement.style.setProperty('--print-scale', String(scale));
+      await waitForPrintLayout(scaleTarget);
+    }
+
+    return () => {
+      document.documentElement.style.removeProperty('--print-scale');
+      container.style.minHeight = prev.minHeight;
+      container.style.height = prev.height;
+      container.style.width = prev.width;
+      container.style.maxWidth = prev.maxWidth;
+    };
+  };
+
+  const exportPdf = async () => {
+    const fileName = `Romaneio_${romaneio.number}_${romaneio.client?.name || 'Venda'}`.replaceAll(/[<>:"/\\|?*]+/g, '_');
+    document.documentElement.classList.add('pdf-export');
+
+    const ensurePreview = async () => {
+      if (view !== 'preview') {
+        setView('preview');
+        await new Promise<void>((r) => setTimeout(() => r(), 0));
+      }
+      const target = document.querySelector('.print-scale') as HTMLElement | null;
+      if (!target) throw new Error('Pré-visualização não encontrada');
+      await waitForPrintLayout(target);
+      return target;
+    };
+
+    let target: HTMLElement;
+    try {
+      target = await ensurePreview();
+    } catch (error: any) {
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Erro ao gerar PDF: ${message}`);
+      document.documentElement.classList.remove('pdf-export');
+      return;
+    }
+
+    const prevStyle = {
+      boxShadow: (target.parentElement as HTMLElement | null)?.style.boxShadow ?? '',
+      border: (target.parentElement as HTMLElement | null)?.style.border ?? '',
+    };
+    const container = target.closest('.print-container') as HTMLElement | null;
+    if (container) {
+      container.style.boxShadow = 'none';
+      container.style.border = 'none';
+    }
+
+    const cleanupScale = await computeAndApplyA4PrintScale();
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
+
+      const canvas = await html2canvas(target, {
+        backgroundColor: '#ffffff',
+        scale: Math.max(2, Math.floor(window.devicePixelRatio || 1)),
+        useCORS: true,
+        logging: false,
+      });
+
+      const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 4;
+      const availW = pageWidth - margin * 2;
+      const availH = pageHeight - margin * 2;
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const imgW = canvas.width;
+      const imgH = canvas.height;
+
+      const scaleToFit = Math.min(availW / imgW, availH / imgH);
+      const renderW = imgW * scaleToFit;
+      const renderH = imgH * scaleToFit;
+
+      const x = (pageWidth - renderW) / 2;
+      const y = (pageHeight - renderH) / 2;
+      pdf.addImage(imgData, 'JPEG', x, y, renderW, renderH, undefined, 'FAST');
+      pdf.save(`${fileName}.pdf`);
+    } catch (error: any) {
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Erro ao gerar PDF: ${message}`);
+    } finally {
+      cleanupScale();
+      document.documentElement.classList.remove('pdf-export');
+      if (container) {
+        container.style.boxShadow = prevStyle.boxShadow;
+        container.style.border = prevStyle.border;
+      }
     }
   };
 
@@ -233,10 +367,12 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
             </button>
           )}
           <button 
-            onClick={handlePrint}
+            onClick={() => {
+              void exportPdf();
+            }}
             className="flex items-center gap-2 px-6 py-2.5 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-all font-bold shadow-lg shadow-orange-100 dark:shadow-none"
           >
-            <Printer size={18} /> Imprimir
+            <FileDown size={18} /> Baixar PDF
           </button>
           <button 
             onClick={() => processSave('PENDENTE')}

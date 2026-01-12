@@ -10,28 +10,27 @@ interface RomaneioPreviewProps {
 
 const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
   return (
-    <div className="print-container bg-white w-[210mm] min-h-[297mm] shadow-2xl p-10 mx-auto text-[11px] leading-tight text-black flex flex-col border border-gray-300">
-      
-      {/* Document Title Header */}
-      <div className="flex justify-between items-start mb-6 border-b-2 border-black pb-2">
-        <div className="flex-1">
-          <h1 className="text-2xl font-black uppercase text-center w-full">Romaneio de Venda</h1>
+    <div className="print-container bg-white w-[210mm] min-h-[297mm] shadow-2xl mx-auto text-black border border-gray-300">
+      <div className="print-scale p-10 text-[11px] leading-tight text-black flex flex-col min-h-[297mm]">
+        <div className="flex justify-between items-start mb-6 border-b-2 border-black pb-2">
+          <div className="flex-1">
+            <h1 className="text-2xl font-black uppercase text-center w-full">Romaneio de Venda</h1>
+          </div>
+          <div className="text-right whitespace-nowrap min-w-[120px]">
+            <div className="flex justify-between gap-4">
+              <span className="font-bold">Nº</span>
+              <span className="text-red-600 font-bold text-sm">{data.number}</span>
+            </div>
+            <div className="flex justify-between gap-4 mt-1">
+              <span className="font-bold">Emissão</span>
+              <span>{formatDate(data.emissionDate)}</span>
+            </div>
+            <div className="flex justify-between gap-4 mt-1">
+              <span className="font-bold uppercase">Data de Venda</span>
+              <span>{formatDate(data.saleDate)}</span>
+            </div>
+          </div>
         </div>
-        <div className="text-right whitespace-nowrap min-w-[120px]">
-          <div className="flex justify-between gap-4">
-            <span className="font-bold">Nº</span>
-            <span className="text-red-600 font-bold text-sm">{data.number}</span>
-          </div>
-          <div className="flex justify-between gap-4 mt-1">
-            <span className="font-bold">Emissão</span>
-            <span>{formatDate(data.emissionDate)}</span>
-          </div>
-          <div className="flex justify-between gap-4 mt-1">
-            <span className="font-bold uppercase">Data de Venda</span>
-            <span>{formatDate(data.saleDate)}</span>
-          </div>
-        </div>
-      </div>
 
       {/* Dynamic Company Branding */}
       <div className="flex items-center gap-6 mb-8 border border-gray-200 p-3 rounded">
@@ -230,9 +229,10 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
         <p className="font-black uppercase text-xs tracking-widest">
           OBS: Após a realização do depósito enviar comprovantes ao vendedor responsável
         </p>
-        <div className="absolute -bottom-6 right-0 text-[7px] text-gray-400 italic">
+        <div className="print-footer-note absolute -bottom-6 right-0 text-[7px] text-gray-400 italic">
           Desenvolvido por VisionApp - Mateus Angelo vr 1.1.1
         </div>
+      </div>
       </div>
     </div>
   );

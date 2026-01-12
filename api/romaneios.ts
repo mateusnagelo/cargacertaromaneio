@@ -190,7 +190,7 @@ export const addRomaneio = async (
   const baseDate = (romaneio as any)?.emissionDate ?? (romaneio as any)?.saleDate ?? null;
   const baseObs = (romaneio as any)?.observation ?? null;
 
-  const candidatePt: any = {
+  const candidatePtNoAccent: any = {
     guia: baseNumber,
     numero: baseNumber,
     data_de_emissao: baseDate,
@@ -198,6 +198,17 @@ export const addRomaneio = async (
     id_da_empresa: toOptionalNumber(baseCompanyId),
     id_do_cliente: toOptionalNumber(baseCustomerId),
     observacoes: baseObs,
+    montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
+    peso_total: Number.isFinite(weightFromItems) ? weightFromItems : null,
+  };
+
+  const candidatePtAccent: any = {
+    guia: baseNumber,
+    numero: baseNumber,
+    data_de_emissao: baseDate,
+    status: statusPt,
+    id_da_empresa: toOptionalNumber(baseCompanyId),
+    id_do_cliente: toOptionalNumber(baseCustomerId),
     'observações': baseObs,
     montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
     peso_total: Number.isFinite(weightFromItems) ? weightFromItems : null,
@@ -212,11 +223,19 @@ export const addRomaneio = async (
     total_weight: Number.isFinite(weightFromItems) ? weightFromItems : null,
   };
 
-  const candidates = [candidatePt, candidateEn];
+  const candidates = [candidatePtNoAccent, candidatePtAccent, candidateEn];
   let lastError: any = null;
 
+  const compactPayload = (input: any) => {
+    const out: any = { ...input };
+    for (const k of Object.keys(out)) {
+      if (out[k] === undefined || out[k] === null || out[k] === '') delete out[k];
+    }
+    return out;
+  };
+
   for (const candidate of candidates) {
-    const payload: any = { ...candidate };
+    const payload: any = compactPayload(candidate);
     for (let attempt = 0; attempt < 20; attempt++) {
       const { data, error } = await tryInsert(payload);
       if (!error) {
@@ -271,6 +290,11 @@ export const addRomaneio = async (
         }
       }
 
+      if (msg.toLowerCase().includes('duplicate key') && msg.toLowerCase().includes('id')) {
+        payload.id = await getNextNumericId();
+        continue;
+      }
+
       const match =
         msg.match(/Could not find the '([^']+)' column/) ||
         msg.match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
@@ -287,8 +311,8 @@ export const addRomaneio = async (
         msg.toLowerCase().includes('invalid input syntax') &&
         (msg.includes('bigint') || msg.includes('integer') || msg.includes('numeric'))
       ) {
-        if ('id_da_empresa' in payload) payload.id_da_empresa = null;
-        if ('id_do_cliente' in payload) payload.id_do_cliente = null;
+        if ('id_da_empresa' in payload) payload.id_da_empresa = toOptionalNumber(payload.id_da_empresa);
+        if ('id_do_cliente' in payload) payload.id_do_cliente = toOptionalNumber(payload.id_do_cliente);
         if ('guia' in payload) payload.guia = toOptionalNumber(payload.guia);
         if ('numero' in payload) payload.numero = toOptionalNumber(payload.numero);
         if ('montante_total' in payload) payload.montante_total = toOptionalNumber(payload.montante_total);

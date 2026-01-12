@@ -23,6 +23,8 @@ export const DEFAULT_ROMANEIO: RomaneioData = {
   company: {
     id: "",
     name: "CARGACERTA LOGÍSTICA E DISTRIBUIÇÃO",
+    cnpj: "",
+    ie: "",
     location: "MATRIZ",
     address: "AV. COMERCIAL, S/N - CENTRO",
     cep: "47600-000",

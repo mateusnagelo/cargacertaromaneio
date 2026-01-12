@@ -39,14 +39,43 @@ const DEFAULT_BANKING: CompanyInfo['banking'] = {
   owner: '',
 };
 
-type CompanyMeta = Pick<CompanyInfo, 'location' | 'address' | 'cep' | 'tel' | 'logoUrl'>;
+type CompanyMeta = Pick<
+  CompanyInfo,
+  | 'cnpj'
+  | 'ie'
+  | 'location'
+  | 'address'
+  | 'cep'
+  | 'tel'
+  | 'logoUrl'
+  | 'fantasyName'
+  | 'email'
+  | 'status'
+  | 'openingDate'
+  | 'legalNature'
+  | 'capitalSocial'
+  | 'cnaeMainCode'
+  | 'cnaeMainDescription'
+  | 'cnpjWsPayload'
+>;
 
 const DEFAULT_META: CompanyMeta = {
+  cnpj: '',
+  ie: '',
   location: '',
   address: '',
   cep: '',
   tel: '',
   logoUrl: '',
+  fantasyName: '',
+  email: '',
+  status: '',
+  openingDate: '',
+  legalNature: '',
+  capitalSocial: null,
+  cnaeMainCode: '',
+  cnaeMainDescription: '',
+  cnpjWsPayload: null,
 };
 
 const readJson = <T,>(key: string): T | null => {
@@ -66,6 +95,23 @@ const writeJson = (key: string, value: unknown) => {
   }
 };
 
+export const fetchCnpjWsCompany = async (cnpj: string, signal?: AbortSignal) => {
+  const clean = String(cnpj || '').replace(/\D/g, '');
+  if (clean.length !== 14) throw new Error('CNPJ inválido.');
+
+  const res = await fetch(`https://publica.cnpj.ws/cnpj/${clean}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal,
+  });
+
+  if (!res.ok) {
+    throw new Error('CNPJ não encontrado.');
+  }
+
+  return res.json();
+};
+
 export const getCompanies = async (signal?: AbortSignal): Promise<CompanyInfo[]> => {
   const query = supabase
     .from('companies')
@@ -74,11 +120,22 @@ export const getCompanies = async (signal?: AbortSignal): Promise<CompanyInfo[]>
   throwQueryError(error);
   return (data || []).map((row: any) => ({
     ...row,
+    cnpj: String(row?.cnpj ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.cnpj ?? DEFAULT_META.cnpj),
+    ie: String(row?.ie ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.ie ?? DEFAULT_META.ie),
     location: String(row?.location ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.location ?? DEFAULT_META.location),
     address: String(row?.address ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.address ?? DEFAULT_META.address),
     cep: String(row?.cep ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.cep ?? DEFAULT_META.cep),
     tel: String(row?.tel ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.tel ?? DEFAULT_META.tel),
     logoUrl: String(row?.logoUrl ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.logoUrl ?? DEFAULT_META.logoUrl),
+    fantasyName: String(row?.fantasyName ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.fantasyName ?? DEFAULT_META.fantasyName),
+    email: String(row?.email ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.email ?? DEFAULT_META.email),
+    status: String(row?.status ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.status ?? DEFAULT_META.status),
+    openingDate: String(row?.openingDate ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.openingDate ?? DEFAULT_META.openingDate),
+    legalNature: String(row?.legalNature ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.legalNature ?? DEFAULT_META.legalNature),
+    capitalSocial: (row?.capitalSocial ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.capitalSocial ?? DEFAULT_META.capitalSocial) as any,
+    cnaeMainCode: String(row?.cnaeMainCode ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.cnaeMainCode ?? DEFAULT_META.cnaeMainCode),
+    cnaeMainDescription: String(row?.cnaeMainDescription ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.cnaeMainDescription ?? DEFAULT_META.cnaeMainDescription),
+    cnpjWsPayload: (row?.cnpjWsPayload ?? readJson<CompanyMeta>(getCompanyMetaKey(String(row?.id)))?.cnpjWsPayload ?? DEFAULT_META.cnpjWsPayload) as any,
     banking:
       row?.banking ??
       (() => {
@@ -98,7 +155,7 @@ export const addCompany = async (company: Omit<CompanyInfo, 'id' | 'created_at'>
   const removed: Record<string, any> = {};
   const payload: any = { ...company };
 
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 50; attempt++) {
     try {
       const inserted = await tryInsert(payload);
       const id = String(inserted?.id);
@@ -107,11 +164,22 @@ export const addCompany = async (company: Omit<CompanyInfo, 'id' | 'created_at'>
       writeJson(getCompanyBankingKey(id), bankingToPersist);
 
       const metaToPersist: CompanyMeta = {
+        cnpj: String(inserted?.cnpj ?? removed.cnpj ?? company.cnpj ?? DEFAULT_META.cnpj),
+        ie: String(inserted?.ie ?? removed.ie ?? company.ie ?? DEFAULT_META.ie),
         location: String(inserted?.location ?? removed.location ?? company.location ?? DEFAULT_META.location),
         address: String(inserted?.address ?? removed.address ?? company.address ?? DEFAULT_META.address),
         cep: String(inserted?.cep ?? removed.cep ?? company.cep ?? DEFAULT_META.cep),
         tel: String(inserted?.tel ?? removed.tel ?? company.tel ?? DEFAULT_META.tel),
         logoUrl: String(inserted?.logoUrl ?? removed.logoUrl ?? company.logoUrl ?? DEFAULT_META.logoUrl),
+        fantasyName: String(inserted?.fantasyName ?? removed.fantasyName ?? company.fantasyName ?? DEFAULT_META.fantasyName),
+        email: String(inserted?.email ?? removed.email ?? company.email ?? DEFAULT_META.email),
+        status: String(inserted?.status ?? removed.status ?? company.status ?? DEFAULT_META.status),
+        openingDate: String(inserted?.openingDate ?? removed.openingDate ?? company.openingDate ?? DEFAULT_META.openingDate),
+        legalNature: String(inserted?.legalNature ?? removed.legalNature ?? company.legalNature ?? DEFAULT_META.legalNature),
+        capitalSocial: (inserted?.capitalSocial ?? removed.capitalSocial ?? company.capitalSocial ?? DEFAULT_META.capitalSocial) as any,
+        cnaeMainCode: String(inserted?.cnaeMainCode ?? removed.cnaeMainCode ?? company.cnaeMainCode ?? DEFAULT_META.cnaeMainCode),
+        cnaeMainDescription: String(inserted?.cnaeMainDescription ?? removed.cnaeMainDescription ?? company.cnaeMainDescription ?? DEFAULT_META.cnaeMainDescription),
+        cnpjWsPayload: (inserted?.cnpjWsPayload ?? removed.cnpjWsPayload ?? company.cnpjWsPayload ?? DEFAULT_META.cnpjWsPayload) as any,
       };
       writeJson(getCompanyMetaKey(id), metaToPersist);
 
@@ -157,18 +225,29 @@ export const updateCompany = async (id: string, updates: Partial<CompanyInfo>, s
 
     const currentMeta = readJson<CompanyMeta>(getCompanyMetaKey(id)) ?? DEFAULT_META;
     const mergedMeta: CompanyMeta = {
+      cnpj: partial.cnpj ?? currentMeta.cnpj,
+      ie: partial.ie ?? currentMeta.ie,
       location: partial.location ?? currentMeta.location,
       address: partial.address ?? currentMeta.address,
       cep: partial.cep ?? currentMeta.cep,
       tel: partial.tel ?? currentMeta.tel,
       logoUrl: partial.logoUrl ?? currentMeta.logoUrl,
+      fantasyName: partial.fantasyName ?? currentMeta.fantasyName,
+      email: partial.email ?? currentMeta.email,
+      status: partial.status ?? currentMeta.status,
+      openingDate: partial.openingDate ?? currentMeta.openingDate,
+      legalNature: partial.legalNature ?? currentMeta.legalNature,
+      capitalSocial: partial.capitalSocial ?? currentMeta.capitalSocial,
+      cnaeMainCode: partial.cnaeMainCode ?? currentMeta.cnaeMainCode,
+      cnaeMainDescription: partial.cnaeMainDescription ?? currentMeta.cnaeMainDescription,
+      cnpjWsPayload: partial.cnpjWsPayload ?? currentMeta.cnpjWsPayload,
     };
     writeJson(getCompanyMetaKey(id), mergedMeta);
   };
 
   persistLocal(updates);
 
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 50; attempt++) {
     if (Object.keys(payload).length === 0) {
       const companies = await getCompanies(signal);
       const found = companies.find((c) => String(c.id) === String(id));

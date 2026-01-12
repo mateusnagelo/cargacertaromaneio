@@ -5,10 +5,21 @@ export interface CompanyInfo {
   id: string;
   created_at?: string;
   name: string;
+  cnpj: string;
+  ie: string;
   location: string;
   address: string;
   cep: string;
   tel: string;
+  fantasyName?: string;
+  email?: string;
+  status?: string;
+  openingDate?: string;
+  legalNature?: string;
+  capitalSocial?: number | null;
+  cnaeMainCode?: string;
+  cnaeMainDescription?: string;
+  cnpjWsPayload?: unknown;
   logoUrl?: string;
   banking: BankingInfo;
 }
@@ -31,6 +42,17 @@ export interface Customer {
   city: string;
   address: string;
   state: string;
+  cep?: string;
+  tel?: string;
+  email?: string;
+  fantasyName?: string;
+  status?: string;
+  openingDate?: string;
+  legalNature?: string;
+  capitalSocial?: number | null;
+  cnaeMainCode?: string;
+  cnaeMainDescription?: string;
+  cnpjWsPayload?: unknown;
 }
 
 export interface ProductStock {

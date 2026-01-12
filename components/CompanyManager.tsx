@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Building2, Trash2, Upload, X, CreditCard, MapPin, Phone, Edit3 } from 'lucide-react';
+import { Plus, Building2, Trash2, Upload, X, CreditCard, MapPin, Phone, Edit3, Search } from 'lucide-react';
 import { CompanyInfo } from '../types';
-import { getCompanies, addCompany, deleteCompany, updateCompany } from '../api/companies';
+import { getCompanies, addCompany, deleteCompany, updateCompany, fetchCnpjWsCompany } from '../api/companies';
 
 const CompanyManager: React.FC = () => {
   const [companies, setCompanies] = useState<CompanyInfo[]>([]);
@@ -10,13 +10,27 @@ const CompanyManager: React.FC = () => {
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
+  const [cnpjLookupLoading, setCnpjLookupLoading] = useState(false);
+  const [cnpjLookupError, setCnpjLookupError] = useState<string | null>(null);
+  const cnpjLookupControllerRef = useRef<AbortController | null>(null);
   
   const [formData, setFormData] = useState<Partial<CompanyInfo>>({
     name: '',
+    cnpj: '',
+    ie: '',
     location: '',
     address: '',
     cep: '',
     tel: '',
+    fantasyName: '',
+    email: '',
+    status: '',
+    openingDate: '',
+    legalNature: '',
+    capitalSocial: null,
+    cnaeMainCode: '',
+    cnaeMainDescription: '',
+    cnpjWsPayload: null,
     logoUrl: '',
     banking: {
       bank: '',
@@ -31,13 +45,25 @@ const CompanyManager: React.FC = () => {
   const resetForm = () => {
     setFormData({
       name: '',
+      cnpj: '',
+      ie: '',
       location: '',
       address: '',
       cep: '',
       tel: '',
+      fantasyName: '',
+      email: '',
+      status: '',
+      openingDate: '',
+      legalNature: '',
+      capitalSocial: null,
+      cnaeMainCode: '',
+      cnaeMainDescription: '',
+      cnpjWsPayload: null,
       logoUrl: '',
       banking: { bank: '', pix: '', type: 'CORRENTE', agency: '', account: '', owner: '' },
     });
+    setCnpjLookupError(null);
   };
 
   useEffect(() => {
@@ -70,10 +96,21 @@ const CompanyManager: React.FC = () => {
     try {
       const payload = {
         name: formData.name,
+        cnpj: formData.cnpj || '',
+        ie: formData.ie || '',
         location: formData.location || '',
         address: formData.address || '',
         cep: formData.cep || '',
         tel: formData.tel || '',
+        fantasyName: formData.fantasyName || '',
+        email: formData.email || '',
+        status: formData.status || '',
+        openingDate: formData.openingDate || '',
+        legalNature: formData.legalNature || '',
+        capitalSocial: formData.capitalSocial ?? null,
+        cnaeMainCode: formData.cnaeMainCode || '',
+        cnaeMainDescription: formData.cnaeMainDescription || '',
+        cnpjWsPayload: formData.cnpjWsPayload ?? null,
         logoUrl: formData.logoUrl || '',
         banking: formData.banking as any,
       };
@@ -115,7 +152,85 @@ const CompanyManager: React.FC = () => {
       ...company,
       banking: company.banking || { bank: '', pix: '', type: 'CORRENTE', agency: '', account: '', owner: '' },
     });
+    setCnpjLookupError(null);
     setIsAdding(true);
+  };
+
+  const handleCnpjLookup = async () => {
+    const cnpjRaw = String(formData.cnpj || '');
+    const cnpj = cnpjRaw.replace(/\D/g, '');
+    if (cnpj.length !== 14) {
+      setCnpjLookupError('Informe um CNPJ com 14 dígitos.');
+      return;
+    }
+
+    cnpjLookupControllerRef.current?.abort();
+    const controller = new AbortController();
+    cnpjLookupControllerRef.current = controller;
+
+    setCnpjLookupLoading(true);
+    setCnpjLookupError(null);
+    try {
+      const data: any = await fetchCnpjWsCompany(cnpj, controller.signal);
+
+      const razaoSocial = String(data?.razao_social ?? '').trim();
+      const nomeFantasia = String(data?.nome_fantasia ?? '').trim();
+      const estabelecimento = data?.estabelecimento ?? {};
+
+      const logradouro = String(estabelecimento?.logradouro ?? '').trim();
+      const numero = String(estabelecimento?.numero ?? '').trim();
+      const complemento = String(estabelecimento?.complemento ?? '').trim();
+      const bairro = String(estabelecimento?.bairro ?? '').trim();
+      const cidade = String(estabelecimento?.cidade?.nome ?? estabelecimento?.cidade ?? '').trim();
+      const uf = String(estabelecimento?.estado?.sigla ?? estabelecimento?.estado?.uf ?? estabelecimento?.uf ?? '').trim();
+      const cep = String(estabelecimento?.cep ?? '').trim();
+      const tel = String(estabelecimento?.telefone1 ?? estabelecimento?.telefone_1 ?? estabelecimento?.telefone ?? '').trim();
+      const email = String(estabelecimento?.email ?? data?.email ?? '').trim();
+      const status = String(estabelecimento?.situacao_cadastral ?? data?.situacao_cadastral ?? '').trim();
+      const openingDate = String(estabelecimento?.data_inicio_atividade ?? data?.data_inicio_atividade ?? '').trim();
+      const legalNature = String(data?.natureza_juridica?.descricao ?? data?.natureza_juridica ?? '').trim();
+      const capitalSocialRaw = data?.capital_social ?? data?.capitalSocial;
+      const capitalSocial = capitalSocialRaw === undefined || capitalSocialRaw === null || capitalSocialRaw === '' ? null : Number(capitalSocialRaw);
+
+      const activity = Array.isArray(estabelecimento?.atividade_principal) ? estabelecimento.atividade_principal[0] : estabelecimento?.atividade_principal;
+      const cnaeMainCode = String(activity?.subclasse ?? activity?.id ?? '').trim();
+      const cnaeMainDescription = String(activity?.descricao ?? '').trim();
+
+      const inscricoes = Array.isArray(estabelecimento?.inscricoes_estaduais) ? estabelecimento.inscricoes_estaduais : [];
+      const ieFromApi = String(inscricoes?.[0]?.inscricao_estadual ?? '').trim();
+
+      const addressParts = [
+        [logradouro, numero].filter(Boolean).join(', '),
+        complemento,
+        bairro ? `- ${bairro}` : '',
+        cidade || uf ? `- ${cidade}${uf ? `/${uf}` : ''}` : '',
+      ].filter(Boolean);
+      const address = addressParts.join(' ').replace(/\s+/g, ' ').trim();
+
+      setFormData((prev) => ({
+        ...prev,
+        cnpj,
+        name: (razaoSocial || prev.name || '').toUpperCase(),
+        fantasyName: (nomeFantasia || prev.fantasyName || '').toUpperCase(),
+        ie: ieFromApi || prev.ie || '',
+        address: (address || prev.address || '').toUpperCase(),
+        cep: cep || prev.cep || '',
+        tel: tel || prev.tel || '',
+        email: email || prev.email || '',
+        status: (status || prev.status || '').toUpperCase(),
+        openingDate: openingDate || prev.openingDate || '',
+        legalNature: (legalNature || prev.legalNature || '').toUpperCase(),
+        capitalSocial: Number.isFinite(capitalSocial as any) ? (capitalSocial as any) : prev.capitalSocial ?? null,
+        cnaeMainCode: cnaeMainCode || prev.cnaeMainCode || '',
+        cnaeMainDescription: (cnaeMainDescription || prev.cnaeMainDescription || '').toUpperCase(),
+        cnpjWsPayload: data,
+      }));
+    } catch (error: any) {
+      if (error?.name === 'AbortError' || String(error?.message || '').includes('aborted')) return;
+      setCnpjLookupError(error instanceof Error ? error.message : 'Falha ao consultar CNPJ.');
+    } finally {
+      setCnpjLookupLoading(false);
+    }
   };
 
   return (
@@ -270,6 +385,48 @@ const CompanyManager: React.FC = () => {
                       onChange={e => setFormData({...formData, tel: e.target.value})}
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-slate-500 uppercase mb-1">CNPJ</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        className="flex-1 p-3 border border-gray-100 dark:border-slate-700 rounded-2xl bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 dark:text-white transition-all"
+                        value={formData.cnpj}
+                        onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCnpjLookup}
+                        disabled={cnpjLookupLoading}
+                        aria-label="Consultar CNPJ"
+                        title="Consultar CNPJ"
+                        className="w-12 h-12 inline-flex items-center justify-center rounded-2xl bg-indigo-600 text-white hover:bg-indigo-700 transition-all disabled:opacity-60 disabled:hover:bg-indigo-600"
+                      >
+                        {cnpjLookupLoading ? '...' : <Search size={18} />}
+                      </button>
+                    </div>
+                    {cnpjLookupError && (
+                      <div className="mt-1 text-[10px] font-bold text-red-500">{cnpjLookupError}</div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-slate-500 uppercase mb-1">Inscrição Estadual</label>
+                    <input
+                      type="text"
+                      className="w-full p-3 border border-gray-100 dark:border-slate-700 rounded-2xl bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 dark:text-white transition-all"
+                      value={formData.ie}
+                      onChange={(e) => setFormData({ ...formData, ie: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-gray-500 dark:text-slate-500 uppercase mb-1">CEP</label>
+                    <input
+                      type="text"
+                      className="w-full p-3 border border-gray-100 dark:border-slate-700 rounded-2xl bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 dark:text-white transition-all"
+                      value={formData.cep}
+                      onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
+                    />
+                  </div>
                   <div className="col-span-2">
                     <label className="block text-xs font-bold text-gray-500 dark:text-slate-500 uppercase mb-1">Endereço Fiscal</label>
                     <input 
@@ -278,6 +435,90 @@ const CompanyManager: React.FC = () => {
                       value={formData.address}
                       onChange={e => setFormData({...formData, address: e.target.value.toUpperCase()})}
                     />
+                  </div>
+                </div>
+
+                <div className="p-6 bg-gray-50 dark:bg-slate-800/50 rounded-[32px] border border-gray-100 dark:border-slate-700 space-y-4">
+                  <h4 className="text-xs font-black text-indigo-400 uppercase flex items-center gap-2">
+                    Dados do CNPJ
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-1">Nome Fantasia</label>
+                      <input
+                        type="text"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
+                        value={formData.fantasyName || ''}
+                        onChange={(e) => setFormData({ ...formData, fantasyName: e.target.value.toUpperCase() })}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-1">E-mail</label>
+                      <input
+                        type="email"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
+                        value={formData.email || ''}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-1">Situação</label>
+                      <input
+                        type="text"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
+                        value={formData.status || ''}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value.toUpperCase() })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-1">Abertura</label>
+                      <input
+                        type="text"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
+                        value={formData.openingDate || ''}
+                        onChange={(e) => setFormData({ ...formData, openingDate: e.target.value })}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-1">Natureza Jurídica</label>
+                      <input
+                        type="text"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
+                        value={formData.legalNature || ''}
+                        onChange={(e) => setFormData({ ...formData, legalNature: e.target.value.toUpperCase() })}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-1">Capital Social</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
+                        value={formData.capitalSocial ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setFormData({ ...formData, capitalSocial: v === '' ? null : Number(v) });
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-1">CNAE Principal</label>
+                      <input
+                        type="text"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
+                        value={formData.cnaeMainCode || ''}
+                        onChange={(e) => setFormData({ ...formData, cnaeMainCode: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-1">Descrição CNAE</label>
+                      <input
+                        type="text"
+                        className="w-full p-2.5 border border-gray-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-all"
+                        value={formData.cnaeMainDescription || ''}
+                        onChange={(e) => setFormData({ ...formData, cnaeMainDescription: e.target.value.toUpperCase() })}
+                      />
+                    </div>
                   </div>
                 </div>
 

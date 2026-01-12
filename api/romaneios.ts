@@ -16,7 +16,9 @@ const throwQueryError = (error: any) => {
   }
   const details = error?.details ? ` ${String(error.details)}` : '';
   const hint = error?.hint ? ` ${String(error.hint)}` : '';
-  throw new Error(`${msg}${details}${hint}`.trim());
+  const code = error?.code ? ` ${String(error.code)}` : '';
+  const status = error?.status ? ` ${String(error.status)}` : '';
+  throw new Error(`${msg}${details}${hint}${code}${status}`.trim());
 };
 
 const readJson = <T,>(key: string): T | null => {
@@ -162,6 +164,17 @@ export const addRomaneio = async (
     return Number.isFinite(n) ? n : null;
   };
 
+  const getNextNumericId = async () => {
+    const q = supabase.from('romaneios').select('id').order('id', { ascending: false }).limit(1).single();
+    const { data, error } = await applyAbortSignal(q, signal);
+    if (error) return Date.now();
+    const current = (data as any)?.id;
+    const asNumber = toOptionalNumber(current);
+    if (asNumber === null) return Date.now();
+    const next = asNumber + 1;
+    return Number.isFinite(next) ? next : Date.now();
+  };
+
   const statusRaw = (romaneio as any)?.status ?? 'PENDENTE';
   const statusNorm = String(statusRaw).trim().toUpperCase();
   const statusPt =
@@ -182,8 +195,8 @@ export const addRomaneio = async (
     numero: baseNumber,
     data_de_emissao: baseDate,
     status: statusPt,
-    id_da_empresa: toOptionalNumber(baseCompanyId) ?? baseCompanyId,
-    id_do_cliente: toOptionalNumber(baseCustomerId) ?? baseCustomerId,
+    id_da_empresa: toOptionalNumber(baseCompanyId),
+    id_do_cliente: toOptionalNumber(baseCustomerId),
     observacoes: baseObs,
     'observações': baseObs,
     montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
@@ -251,6 +264,13 @@ export const addRomaneio = async (
       lastError = error;
       const msg = String(error.message || error);
 
+      if (msg.includes('null value in column') && msg.includes('"id"')) {
+        if (!('id' in payload)) {
+          payload.id = await getNextNumericId();
+          continue;
+        }
+      }
+
       const match =
         msg.match(/Could not find the '([^']+)' column/) ||
         msg.match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
@@ -263,9 +283,16 @@ export const addRomaneio = async (
         }
       }
 
-      if (msg.toLowerCase().includes('invalid input syntax') && (msg.includes('bigint') || msg.includes('integer'))) {
+      if (
+        msg.toLowerCase().includes('invalid input syntax') &&
+        (msg.includes('bigint') || msg.includes('integer') || msg.includes('numeric'))
+      ) {
         if ('id_da_empresa' in payload) payload.id_da_empresa = null;
         if ('id_do_cliente' in payload) payload.id_do_cliente = null;
+        if ('guia' in payload) payload.guia = toOptionalNumber(payload.guia);
+        if ('numero' in payload) payload.numero = toOptionalNumber(payload.numero);
+        if ('montante_total' in payload) payload.montante_total = toOptionalNumber(payload.montante_total);
+        if ('peso_total' in payload) payload.peso_total = toOptionalNumber(payload.peso_total);
         continue;
       }
 

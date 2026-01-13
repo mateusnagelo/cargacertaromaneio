@@ -1,5 +1,5 @@
 
-import React, { useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Plus, Trash2, User, FileText, ShoppingCart, DollarSign, CreditCard, Building2, Upload, MessageSquareText, X } from 'lucide-react';
 import { RomaneioData, Product, Expense, Observation } from '../types';
 
@@ -33,6 +33,51 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
   onOpenObservationManager
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [customerSearch, setCustomerSearch] = useState('');
+
+  const filteredCustomers = useMemo(() => {
+    const normalizeText = (v: unknown) =>
+      String(v ?? '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    const onlyDigits = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+
+    const term = normalizeText(customerSearch);
+    const termDigits = onlyDigits(customerSearch);
+
+    if (!term && !termDigits) return customers;
+
+    return customers.filter((c) => {
+      const id = String(c?.id ?? '');
+      const name = normalizeText(c?.name);
+      const fantasyName = normalizeText((c as any)?.fantasyName);
+      const cnpjDigits = onlyDigits((c as any)?.cnpj);
+
+      const matchText = !!term && (name.includes(term) || fantasyName.includes(term) || id.toLowerCase().includes(term));
+      const matchDigits = !!termDigits && (cnpjDigits.includes(termDigits) || onlyDigits(id).includes(termDigits));
+
+      return matchText || matchDigits;
+    });
+  }, [customers, customerSearch]);
+
+  const customerSuggestions = useMemo(() => {
+    const term = customerSearch.trim();
+    if (!term) return [];
+    return filteredCustomers.slice(0, 8);
+  }, [filteredCustomers, customerSearch]);
+
+  const applyCustomer = (customer: any) => {
+    setData(prev => ({
+      ...prev,
+      customer: customer,
+      customerId: String(customer.id),
+      client: { name: customer.name, cnpj: customer.cnpj, city: customer.city, state: customer.state }
+    }));
+    setCustomerSearch('');
+  };
 
   const parseDecimal = (value: any) => {
     if (value === null || value === undefined) return 0;
@@ -218,18 +263,57 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <div className="sm:col-span-2">
             <label className={labelClasses}>Selecionar Cliente</label>
+            <input
+              type="text"
+              value={customerSearch}
+              onChange={(e) => setCustomerSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && customerSuggestions.length > 0) {
+                  e.preventDefault();
+                  applyCustomer(customerSuggestions[0]);
+                }
+              }}
+              placeholder="Buscar por razão, ID ou CNPJ..."
+              className={`${inputClasses} mb-2`}
+            />
+            {customerSuggestions.length > 0 && (
+              <div className="mb-2 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-2xl overflow-hidden">
+                {customerSuggestions.map((c) => (
+                  <button
+                    key={String(c.id)}
+                    type="button"
+                    onClick={() => applyCustomer(c)}
+                    className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-xs font-black text-gray-800 dark:text-white uppercase truncate">
+                        {c.name}
+                      </span>
+                      <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 shrink-0">
+                        {String(c.cnpj || c.id)}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
             <select
-              value={data.customer?.id || ''}
+              value={String(data.customer?.id ?? '')}
               onChange={(e) => {
-                const customer = customers.find(c => c.id === e.target.value);
+                const selectedId = e.target.value;
+                const customer = customers.find(c => String(c.id) === selectedId);
                 if (customer) {
-                  setData(prev => ({ ...prev, customer: customer, client: { name: customer.name, cnpj: customer.cnpj, city: customer.city, state: customer.state } }));
+                  applyCustomer(customer);
                 }
               }}
               className={`${inputClasses} font-bold`}
             >
               <option value="" disabled>Selecione um cliente</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {filteredCustomers.map(c => (
+                <option key={String(c.id)} value={String(c.id)}>
+                  {c.name}
+                </option>
+              ))}
             </select>
           </div>
           <div className="sm:col-span-2">

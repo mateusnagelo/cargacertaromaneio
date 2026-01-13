@@ -5,6 +5,7 @@ import { CompanyInfo } from '../types';
 import { getCompanies, addCompany, deleteCompany, updateCompany, fetchCnpjWsCompany } from '../api/companies';
 
 const CompanyManager: React.FC = () => {
+  const normalizeDoc = (v: unknown) => String(v ?? '').replace(/\D/g, '');
   const [companies, setCompanies] = useState<CompanyInfo[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
@@ -94,9 +95,47 @@ const CompanyManager: React.FC = () => {
   const handleSave = async () => {
     if (!formData.name) return;
     try {
+      const doc = normalizeDoc(formData.cnpj);
+      if (!editingCompanyId && doc && (doc.length === 11 || doc.length === 14)) {
+        const dup = companies.find((c) => normalizeDoc(c.cnpj) === doc);
+        if (dup) {
+          const ok = window.confirm(
+            `Este CNPJ/CPF já possui cadastro no sistema (${dup.name || 'Sem nome'}). Deseja sobrescrever o cadastro existente?`
+          );
+          if (!ok) return;
+          const payload = {
+            name: formData.name,
+            cnpj: doc,
+            ie: formData.ie || '',
+            location: formData.location || '',
+            address: formData.address || '',
+            cep: formData.cep || '',
+            tel: formData.tel || '',
+            fantasyName: formData.fantasyName || '',
+            email: formData.email || '',
+            status: formData.status || '',
+            openingDate: formData.openingDate || '',
+            legalNature: formData.legalNature || '',
+            capitalSocial: formData.capitalSocial ?? null,
+            cnaeMainCode: formData.cnaeMainCode || '',
+            cnaeMainDescription: formData.cnaeMainDescription || '',
+            cnpjWsPayload: formData.cnpjWsPayload ?? null,
+            logoUrl: formData.logoUrl || '',
+            banking: formData.banking as any,
+          };
+
+          await updateCompany(String(dup.id), payload as any);
+          fetchCompanies();
+          setIsAdding(false);
+          setEditingCompanyId(null);
+          resetForm();
+          return;
+        }
+      }
+
       const payload = {
         name: formData.name,
-        cnpj: formData.cnpj || '',
+        cnpj: doc || formData.cnpj || '',
         ie: formData.ie || '',
         location: formData.location || '',
         address: formData.address || '',

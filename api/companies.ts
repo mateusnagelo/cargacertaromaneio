@@ -9,15 +9,23 @@ const applyAbortSignal = (query: any, signal?: AbortSignal) => {
 const getMissingColumnFromMessage = (msg: string) => {
   const marker = "Could not find the '";
   const idx = msg.indexOf(marker);
-  if (idx === -1) return null;
-  const rest = msg.slice(idx + marker.length);
-  const end = rest.indexOf("' column");
-  if (end === -1) return null;
-  return rest.slice(0, end);
+  if (idx !== -1) {
+    const rest = msg.slice(idx + marker.length);
+    const end = rest.indexOf("' column");
+    if (end !== -1) return rest.slice(0, end);
+  }
+
+  const match =
+    msg.match(/Could not find the '([^']+)' column/i) ||
+    msg.match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
+    msg.match(/column "([^"]+)" does not exist/i);
+  return match?.[1] ?? null;
 };
 
 const getCompanyMetaKey = (id: string) => `bb_company_meta_${id}`;
 const getCompanyBankingKey = (id: string) => `bb_company_banking_${id}`;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const throwQueryError = (error: any) => {
   if (!error) return;
@@ -154,6 +162,7 @@ export const addCompany = async (company: Omit<CompanyInfo, 'id' | 'created_at'>
 
   const removed: Record<string, any> = {};
   const payload: any = { ...company };
+  const original: any = { ...company };
 
   for (let attempt = 0; attempt < 50; attempt++) {
     try {
@@ -183,11 +192,17 @@ export const addCompany = async (company: Omit<CompanyInfo, 'id' | 'created_at'>
       };
       writeJson(getCompanyMetaKey(id), metaToPersist);
 
-      return {
-        ...inserted,
-        ...metaToPersist,
-        banking: bankingToPersist,
-      } as CompanyInfo;
+      const backfillPayload: any = { ...original, ...removed };
+      delete backfillPayload.id;
+      delete backfillPayload.created_at;
+      delete backfillPayload.name;
+
+      if (Object.keys(backfillPayload).length > 0) {
+        const updated = await updateCompany(id, backfillPayload, signal);
+        return updated;
+      }
+
+      return { ...inserted, ...metaToPersist, banking: bankingToPersist } as CompanyInfo;
     } catch (err: any) {
       const msg = String(err?.message || '');
       const missing = getMissingColumnFromMessage(msg);
@@ -266,11 +281,19 @@ export const updateCompany = async (id: string, updates: Partial<CompanyInfo>, s
       const msg = String(err?.message || '');
       const missing = getMissingColumnFromMessage(msg);
       if (missing && missing in payload) {
+        if (attempt < 6) {
+          await sleep(800);
+          continue;
+        }
         delete payload[missing];
         continue;
       }
       if (missing && missing === 'banking') {
         delete payload.banking;
+        continue;
+      }
+      if (msg.includes('schema cache')) {
+        await sleep(800);
         continue;
       }
       throw err;

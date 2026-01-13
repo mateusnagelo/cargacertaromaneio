@@ -5,6 +5,7 @@ import { Customer } from '../types';
 import { getCustomers, addCustomer, deleteCustomer, updateCustomer, fetchCnpjWsCustomer } from '../api/customers';
 
 const CustomerManager: React.FC = () => {
+  const normalizeDoc = (v: unknown) => String(v ?? '').replace(/\D/g, '');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -185,6 +186,7 @@ const CustomerManager: React.FC = () => {
     if (!formData.name) return;
     const controller = new AbortController();
     try {
+      const doc = normalizeDoc(formData.cnpj);
       const addressParts = [formData.address, formData.neighborhood].filter(Boolean);
       const addressBase = addressParts.join(', ');
       const cityState = [formData.city, formData.state].filter(Boolean).join('/');
@@ -193,7 +195,7 @@ const CustomerManager: React.FC = () => {
       if (editingId) {
         await updateCustomer(editingId, {
           name: formData.name,
-          cnpj: formData.cnpj || '',
+          cnpj: doc || formData.cnpj || '',
           ie: formData.ie || '/',
           neighborhood: formData.neighborhood || '',
           city: formData.city || '',
@@ -212,9 +214,62 @@ const CustomerManager: React.FC = () => {
           cnpjWsPayload: formData.cnpjWsPayload ?? null,
         }, controller.signal);
       } else {
+        if (doc && (doc.length === 11 || doc.length === 14)) {
+          const dup = customers.find((c) => normalizeDoc(c.cnpj) === doc);
+          if (dup) {
+            const ok = window.confirm(
+              `Este CNPJ/CPF já possui cadastro no sistema (${dup.name || 'Sem nome'}). Deseja sobrescrever o cadastro existente?`
+            );
+            if (!ok) return;
+            await updateCustomer(dup.id, {
+              name: formData.name,
+              cnpj: doc,
+              ie: formData.ie || '/',
+              neighborhood: formData.neighborhood || '',
+              city: formData.city || '',
+              address: fullAddress,
+              state: formData.state || '',
+              cep: formData.cep || '',
+              tel: formData.tel || '',
+              email: formData.email || '',
+              fantasyName: formData.fantasyName || '',
+              status: formData.status || '',
+              openingDate: formData.openingDate || '',
+              legalNature: formData.legalNature || '',
+              capitalSocial: formData.capitalSocial ?? null,
+              cnaeMainCode: formData.cnaeMainCode || '',
+              cnaeMainDescription: formData.cnaeMainDescription || '',
+              cnpjWsPayload: formData.cnpjWsPayload ?? null,
+            }, controller.signal);
+            fetchCustomers(controller.signal);
+            setFormData({
+              name: '',
+              cnpj: '',
+              city: '',
+              state: '',
+              address: '',
+              neighborhood: '',
+              ie: '/',
+              cep: '',
+              tel: '',
+              email: '',
+              fantasyName: '',
+              status: '',
+              openingDate: '',
+              legalNature: '',
+              capitalSocial: null,
+              cnaeMainCode: '',
+              cnaeMainDescription: '',
+              cnpjWsPayload: null,
+            });
+            setIsAdding(false);
+            setEditingId(null);
+            return;
+          }
+        }
         await addCustomer({
           name: formData.name,
-          cnpj: formData.cnpj || '',
+          cnpj: doc || formData.cnpj || '',
           ie: formData.ie || '/',
           neighborhood: formData.neighborhood || '',
           city: formData.city || '',

@@ -9,12 +9,20 @@ const applyAbortSignal = (query: any, signal?: AbortSignal) => {
 const getMissingColumnFromMessage = (msg: string) => {
   const marker = "Could not find the '";
   const idx = msg.indexOf(marker);
-  if (idx === -1) return null;
-  const rest = msg.slice(idx + marker.length);
-  const end = rest.indexOf("' column");
-  if (end === -1) return null;
-  return rest.slice(0, end);
+  if (idx !== -1) {
+    const rest = msg.slice(idx + marker.length);
+    const end = rest.indexOf("' column");
+    if (end !== -1) return rest.slice(0, end);
+  }
+
+  const match =
+    msg.match(/Could not find the '([^']+)' column/i) ||
+    msg.match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
+    msg.match(/column "([^"]+)" does not exist/i);
+  return match?.[1] ?? null;
 };
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 type CustomerOverride = Partial<Omit<Customer, 'id'>>;
 
@@ -154,6 +162,7 @@ export const addCustomer = async (customer: Omit<Customer, 'id'>, signal?: Abort
     cnaeMainDescription: customer.cnaeMainDescription ?? '',
     cnpjWsPayload: customer.cnpjWsPayload ?? null,
   };
+  const original: any = { ...payload };
 
   for (let attempt = 0; attempt < 50; attempt++) {
     try {
@@ -162,6 +171,19 @@ export const addCustomer = async (customer: Omit<Customer, 'id'>, signal?: Abort
       if (Object.keys(removed).length > 0) {
         writeJson(getCustomerOverrideKey(id), removed);
       }
+
+      const backfillPayload: any = { ...original, ...removed };
+      delete backfillPayload.id;
+      delete backfillPayload.created_at;
+      delete backfillPayload.name;
+      delete backfillPayload.document;
+      delete backfillPayload.address;
+
+      if (Object.keys(backfillPayload).length > 0) {
+        const updated = await updateCustomer(id, backfillPayload, signal);
+        return Array.isArray(updated) ? inserted : updated;
+      }
+
       return inserted;
     } catch (err: any) {
       const msg = String(err?.message || '');
@@ -220,7 +242,15 @@ export const updateCustomer = async (id: string, updates: Partial<Omit<Customer,
       const msg = String(err?.message || '');
       const missing = getMissingColumnFromMessage(msg);
       if (missing && missing in updatePayload) {
+        if (attempt < 6) {
+          await sleep(800);
+          continue;
+        }
         delete (updatePayload as any)[missing];
+        continue;
+      }
+      if (msg.includes('schema cache')) {
+        await sleep(800);
         continue;
       }
       throw err;

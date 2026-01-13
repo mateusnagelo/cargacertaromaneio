@@ -94,20 +94,21 @@
             margin: 0 auto !important;
             border: none !important;
             box-shadow: none !important;
-            overflow: hidden !important;
+            overflow: visible !important;
         }
         html.pdf-export .print-scale {
             width: var(--pdf-page-width) !important;
             max-width: var(--pdf-page-width) !important;
             min-height: 0 !important;
-            padding: 5mm !important;
+            padding: 3mm !important;
             box-sizing: border-box !important;
-            transform: scale(var(--print-scale)) !important;
-            transform-origin: top left !important;
+            transform: none !important;
+            font-size: 10px !important;
+            line-height: 1.15 !important;
         }
         html.pdf-export .print-footer-note {
-            position: static !important;
-            margin-top: 2mm !important;
+            position: absolute !important;
+            margin-top: 0 !important;
         }
         html.pdf-export .mb-8 {
             margin-bottom: 4mm !important;

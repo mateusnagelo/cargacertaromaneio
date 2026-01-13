@@ -253,38 +253,47 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
     const prevStyle = {
       boxShadow: (target.parentElement as HTMLElement | null)?.style.boxShadow ?? '',
       border: (target.parentElement as HTMLElement | null)?.style.border ?? '',
+      overflow: (target.parentElement as HTMLElement | null)?.style.overflow ?? '',
     };
     const container = target.closest('.print-container') as HTMLElement | null;
     if (container) {
       container.style.boxShadow = 'none';
       container.style.border = 'none';
+      container.style.overflow = 'visible';
     }
 
-    const cleanupScale = await computeAndApplyA4PrintScale();
     try {
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
 
-      const canvas = await html2canvas(target, {
+      const captureRoot = (target.closest('.print-container') as HTMLElement | null) ?? target;
+      const canvas = await html2canvas(captureRoot, {
         backgroundColor: '#ffffff',
         scale: Math.max(2, Math.floor(window.devicePixelRatio || 1)),
         useCORS: true,
         logging: false,
+        windowWidth: captureRoot.scrollWidth,
+        windowHeight: captureRoot.scrollHeight,
       });
 
       const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 4;
+      const margin = 2;
       const availW = pageWidth - margin * 2;
       const availH = pageHeight - margin * 2;
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
-      const imgW = canvas.width;
-      const imgH = canvas.height;
+      const imgWpx = canvas.width;
+      const imgHpx = canvas.height;
 
-      const scaleToFit = Math.min(availW / imgW, availH / imgH);
-      const renderW = imgW * scaleToFit;
-      const renderH = imgH * scaleToFit;
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const aspect = imgHpx > 0 ? imgWpx / imgHpx : 1;
+
+      let renderW = availW;
+      let renderH = renderW / aspect;
+      if (renderH > availH) {
+        renderH = availH;
+        renderW = renderH * aspect;
+      }
 
       const x = (pageWidth - renderW) / 2;
       const y = (pageHeight - renderH) / 2;
@@ -294,11 +303,11 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
       const message = error instanceof Error ? error.message : String(error);
       alert(`Erro ao gerar PDF: ${message}`);
     } finally {
-      cleanupScale();
       document.documentElement.classList.remove('pdf-export');
       if (container) {
         container.style.boxShadow = prevStyle.boxShadow;
         container.style.border = prevStyle.border;
+        container.style.overflow = prevStyle.overflow;
       }
     }
   };

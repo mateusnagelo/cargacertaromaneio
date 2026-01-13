@@ -17,15 +17,15 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
             <h1 className="text-2xl font-black uppercase text-center w-full">Romaneio de Venda</h1>
           </div>
           <div className="text-right whitespace-nowrap min-w-[120px]">
-            <div className="flex justify-between gap-4">
+            <div className="flex justify-between">
               <span className="font-bold">Nº</span>
               <span className="text-red-600 font-bold text-sm">{data.number}</span>
             </div>
-            <div className="flex justify-between gap-4 mt-1">
+            <div className="flex justify-between mt-1">
               <span className="font-bold">Emissão</span>
               <span>{formatDate(data.emissionDate)}</span>
             </div>
-            <div className="flex justify-between gap-4 mt-1">
+            <div className="flex justify-between mt-1">
               <span className="font-bold uppercase">Data de Venda</span>
               <span>{formatDate(data.saleDate)}</span>
             </div>
@@ -33,8 +33,8 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
         </div>
 
       {/* Dynamic Company Branding */}
-      <div className="flex items-center gap-6 mb-8 border border-gray-200 p-3 rounded">
-        <div className="flex flex-col items-center min-w-[120px]">
+      <div className="flex items-center mb-8 border border-gray-200 p-3 rounded">
+        <div className="flex flex-col items-center min-w-[120px] mr-6">
           {data.company.logoUrl ? (
             <img 
               src={data.company.logoUrl} 
@@ -82,20 +82,20 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
 
       {/* Operation Details */}
       <div className="grid grid-cols-2 gap-y-2 mb-6 border border-gray-300 p-3 rounded">
-        <div className="flex items-center gap-4">
-          <span className="font-bold uppercase">Natureza de Operação:</span>
+        <div className="flex items-center">
+          <span className="font-bold uppercase mr-4">Natureza de Operação:</span>
           <span>{data.natureOfOperation}</span>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="font-bold uppercase">Prazo/Condição:</span>
+        <div className="flex items-center">
+          <span className="font-bold uppercase mr-4">Prazo/Condição:</span>
           <span>{data.terms}</span>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="font-bold uppercase">Data de Venda:</span>
+        <div className="flex items-center">
+          <span className="font-bold uppercase mr-4">Data de Venda:</span>
           <span>{formatDate(data.saleDate)}</span>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="font-bold uppercase">Vencimento:</span>
+        <div className="flex items-center">
+          <span className="font-bold uppercase mr-4">Vencimento:</span>
           <span>{formatDate(data.dueDate)}</span>
         </div>
       </div>
@@ -142,8 +142,8 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
 
       {/* Products Total Row */}
       <div className="flex justify-end mb-8">
-        <div className="flex items-center gap-4 bg-green-100/50 p-2 rounded-sm border border-black min-w-[300px]">
-          <span className="font-bold uppercase flex-1">Total Produtos</span>
+        <div className="flex items-center justify-between bg-green-100/50 p-2 rounded-sm border border-black min-w-[300px]">
+          <span className="font-bold uppercase">Total Produtos</span>
           <span className="text-lg font-black">{formatCurrency(totals.products)}</span>
         </div>
       </div>
@@ -175,15 +175,15 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
       </table>
 
       <div className="flex justify-end mb-8">
-        <div className="flex items-center gap-4 bg-green-100/50 p-2 rounded-sm border border-black min-w-[300px]">
-          <span className="font-bold uppercase flex-1">Total Despesas</span>
+        <div className="flex items-center justify-between bg-green-100/50 p-2 rounded-sm border border-black min-w-[300px]">
+          <span className="font-bold uppercase">Total Despesas</span>
           <span className="text-lg font-black">{formatCurrency(totals.expenses)}</span>
         </div>
       </div>
 
       <div className="flex justify-end mb-8">
-        <div className="flex items-center gap-4 bg-green-200 p-3 rounded shadow-inner border-2 border-green-800 min-w-[400px]">
-          <span className="font-black text-xl uppercase flex-1 text-green-900">Total Geral</span>
+        <div className="flex items-center justify-between bg-green-200 p-3 rounded shadow-inner border-2 border-green-800 min-w-[400px]">
+          <span className="font-black text-xl uppercase text-green-900">Total Geral</span>
           <span className="text-2xl font-black text-green-900">{formatCurrency(totals.grand)}</span>
         </div>
       </div>

@@ -123,9 +123,15 @@ export const getRomaneios = async (signal?: AbortSignal): Promise<RomaneioData[]
       if (!filled.banking && (backup as any).banking) filled.banking = (backup as any).banking;
       if (!filled.company && (backup as any).company) filled.company = (backup as any).company;
       if (!filled.customer && (backup as any).customer) filled.customer = (backup as any).customer;
+      if ((filled.number === undefined || filled.number === null || filled.number === '') && filled.id != null) {
+        filled.number = String(filled.id);
+      }
       return filled as RomaneioData;
     }
 
+    if ((merged.number === undefined || merged.number === null || merged.number === '') && merged.id != null) {
+      merged.number = String(merged.id);
+    }
     return merged as RomaneioData;
   });
 };
@@ -252,6 +258,10 @@ export const addRomaneio = async (
         if (merged.observacoes && !merged.observation) merged.observation = merged.observacoes;
 
         if (merged.id != null) merged.id = String(merged.id);
+        if (merged.number === undefined || merged.number === null || merged.number === '') {
+          const inputNumber = String((romaneio as any)?.number ?? '').trim();
+          merged.number = inputNumber || String(merged.id || '');
+        }
 
         const backupId = String(merged.id || '');
         if (backupId) {
@@ -260,7 +270,7 @@ export const addRomaneio = async (
             id: backupId,
             created_at: merged.created_at ?? merged.criado_em ?? (romaneio as any)?.created_at,
             status: merged.status ?? (romaneio as any)?.status,
-            number: merged.number ?? String((romaneio as any)?.number ?? ''),
+            number: merged.number,
           };
           writeJson(getRomaneioBackupKey(backupId), fullBackup);
         }

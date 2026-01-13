@@ -12,7 +12,7 @@ export const DEFAULT_ROMANEIO: RomaneioData = {
   id: "",
   companyId: "",
   customerId: "",
-  number: "1001",
+  number: "",
   status: "PENDENTE",
   emissionDate: new Date().toISOString().split('T')[0],
   saleDate: new Date().toISOString().split('T')[0],

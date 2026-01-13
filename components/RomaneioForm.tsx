@@ -138,17 +138,18 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
             <div className="sm:col-span-2">
               <label className={labelClasses}>Selecionar Empresa</label>
               <select
-                value={data.company?.id || ''}
+                value={String(data.company?.id ?? '')}
                 onChange={(e) => {
-                  const company = companies.find(c => c.id === e.target.value);
+                  const selectedId = e.target.value;
+                  const company = companies.find(c => String(c.id) === selectedId);
                   if (company) {
-                    setData(prev => ({ ...prev, company: company, banking: company.banking }));
+                    setData(prev => ({ ...prev, company: company, companyId: String(company.id), banking: company.banking }));
                   }
                 }}
                 className={`${inputClasses} font-bold`}
               >
                 <option value="" disabled>Selecione uma empresa</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {companies.map(c => <option key={String(c.id)} value={String(c.id)}>{c.name}</option>)}
               </select>
             </div>
             <div className="sm:col-span-2">
@@ -256,11 +257,15 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
           <div className="flex items-center gap-2">
             <select 
               onChange={(e) => onAddStockProduct(e.target.value)}
-              className="p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-xs font-bold outline-none"
+              className="p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-xs font-bold outline-none text-gray-900 dark:text-white"
               defaultValue=""
             >
-              <option value="" disabled>Adicionar do Estoque</option>
-              {stockProducts.map(p => <option key={p.id} value={p.id}>{p.description}</option>)}
+              <option value="" disabled className="bg-white text-gray-900">Adicionar do Estoque</option>
+              {stockProducts.map(p => (
+                <option key={p.id} value={p.id} className="bg-white text-gray-900">
+                  {p.description || p.name}
+                </option>
+              ))}
             </select>
             <button onClick={addProduct} className="p-3 bg-green-600 text-white rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-100 dark:shadow-none">
               <Plus size={20} />
@@ -307,11 +312,15 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
           <div className="flex items-center gap-2">
             <select 
               onChange={(e) => onAddStockExpense(e.target.value)}
-              className="p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-xs font-bold outline-none"
+              className="p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-xs font-bold outline-none text-gray-900 dark:text-white"
               defaultValue=""
             >
-              <option value="" disabled>Adicionar Despesa</option>
-              {expenseStock.map(e => <option key={e.id} value={e.id}>{e.description}</option>)}
+              <option value="" disabled className="bg-white text-gray-900">Adicionar Despesa</option>
+              {expenseStock.map(e => (
+                <option key={e.id} value={e.id} className="bg-white text-gray-900">
+                  {e.description}
+                </option>
+              ))}
             </select>
             {onOpenExpenseManager && (
               <button

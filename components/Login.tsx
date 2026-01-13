@@ -11,6 +11,7 @@ import {
   Truck
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import mapaBrasil from '../mapabrasil.png';
 
 interface LoginProps {
   onLogin: () => void;
@@ -96,24 +97,50 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-white font-sans selection:bg-yellow-200 selection:text-yellow-900">
-      {/* Dynamic Background Elements */}
+    <div className="min-h-screen w-full relative overflow-hidden bg-white font-sans selection:bg-yellow-200 selection:text-yellow-900">
       <div className="absolute top-0 left-0 w-full h-full z-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-yellow-100 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
         <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-blue-100 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-2000"></div>
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full max-w-[800px] max-h-[800px] bg-yellow-50 rounded-full mix-blend-multiply filter blur-[100px] opacity-20 animate-pulse"></div>
       </div>
 
-      <div className={`relative z-10 w-full max-w-md px-6 transition-all duration-1000 transform ${mounted ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}>
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center p-4 bg-yellow-400 rounded-3xl shadow-2xl shadow-yellow-200 mb-6 group transition-transform hover:scale-110 duration-500">
-            <Truck size={40} className="text-yellow-900 group-hover:translate-x-2 transition-transform" />
+      <div className="relative z-10 min-h-screen grid grid-cols-1 lg:grid-cols-2">
+        <div className="hidden lg:block relative">
+          <div className="absolute inset-0 p-6">
+            <div className="relative h-full w-full rounded-[40px] overflow-hidden border border-white/60 shadow-2xl shadow-yellow-100/50">
+              <img
+                src={mapaBrasil}
+                alt="Mapa do Brasil"
+                className="absolute inset-0 w-full h-full object-contain bg-[#eaf3ff]"
+                draggable={false}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
+              <div className="absolute left-10 right-10 bottom-10">
+                <div className="inline-flex items-center gap-3 bg-white/90 backdrop-blur-xl border border-white px-5 py-4 rounded-3xl shadow-xl">
+                  <div className="bg-yellow-400 p-2 rounded-2xl">
+                    <Truck size={20} className="text-yellow-900" />
+                  </div>
+                  <div className="leading-tight">
+                    <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Romaneios & Logística</p>
+                    <p className="text-sm font-black text-gray-900">Mapa para acompanhamento operacional</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <h1 className="text-4xl font-black text-gray-900 tracking-tight mb-2 uppercase">CARGACERTA</h1>
-          <p className="text-gray-500 font-medium tracking-wide">Gestão de Romaneios & Logística</p>
         </div>
 
-        <div className="bg-white/80 backdrop-blur-2xl border border-white p-8 md:p-10 rounded-[40px] shadow-2xl shadow-yellow-100/50">
+        <div className={`flex items-center justify-center px-6 py-10 ${mounted ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'} transition-all duration-1000 transform`}>
+          <div className="w-full max-w-md">
+            <div className="text-center mb-10">
+              <div className="inline-flex items-center justify-center p-4 bg-yellow-400 rounded-3xl shadow-2xl shadow-yellow-200 mb-6 group transition-transform hover:scale-110 duration-500">
+                <Truck size={40} className="text-yellow-900 group-hover:translate-x-2 transition-transform" />
+              </div>
+              <h1 className="text-4xl font-black text-gray-900 tracking-tight mb-2 uppercase">CARGACERTA</h1>
+              <p className="text-gray-500 font-medium tracking-wide">Gestão de Romaneios & Logística</p>
+            </div>
+
+            <div className="bg-white/80 backdrop-blur-2xl border border-white p-8 md:p-10 rounded-[40px] shadow-2xl shadow-yellow-100/50">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-2 h-8 bg-yellow-400 rounded-full"></div>
             <h2 className="text-xl font-black text-gray-800 uppercase tracking-wider">
@@ -242,9 +269,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </div>
         </div>
 
-        <p className="text-center mt-10 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
-          VisionApp <span className="text-gray-300">•</span> Mateus Angelo
-        </p>
+            <p className="text-center mt-10 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
+              VisionApp <span className="text-gray-300">•</span> Mateus Angelo
+            </p>
+          </div>
+        </div>
       </div>
 
       <style>{`

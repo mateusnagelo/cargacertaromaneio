@@ -203,7 +203,7 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
             <span>{data.banking.bank}</span>
           </div>
           <div className="flex justify-between">
-            <span className="font-bold uppercase">Pix / CPF:</span>
+            <span className="font-bold uppercase">Pix / CNPJ:</span>
             <span>{data.banking.pix}</span>
           </div>
           <div className="flex justify-between">

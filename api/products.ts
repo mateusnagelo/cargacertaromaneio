@@ -46,13 +46,11 @@ export const getProducts = async (signal?: AbortSignal): Promise<CatalogProduct[
   const { data, error } = await applyAbortSignal(query, signal);
   throwQueryError(error);
   const rows = (data || []) as CatalogProduct[];
-  return rows
-    .filter((p) => !readJson<boolean>(getProductDeletedKey(p.id)))
-    .map((p) => {
-      const override = readJson<ProductOverride>(getProductOverrideKey(p.id));
-      if (!override) return p;
-      return { ...p, ...override };
-    });
+  return rows.map((p) => {
+    const override = readJson<ProductOverride>(getProductOverrideKey(p.id));
+    if (!override) return p;
+    return { ...p, ...override };
+  });
 };
 
 export const addProduct = async (product: Omit<CatalogProduct, 'id' | 'created_at'>, signal?: AbortSignal) => {
@@ -66,37 +64,28 @@ export const addProduct = async (product: Omit<CatalogProduct, 'id' | 'created_a
 };
 
 export const updateProduct = async (id: number, updates: Partial<CatalogProduct>) => {
-  const { data, error } = await supabase
+  const { error, count } = await supabase
     .from('products')
-    .update(updates)
+    .update(updates, { count: 'exact' })
     .eq('id', id)
-    .select();
+  ;
   throwQueryError(error);
-  if (!data || data.length === 0) {
-    const current = (readJson<ProductOverride>(getProductOverrideKey(id)) ?? {}) as Partial<ProductOverride>;
-    const next: ProductOverride = {
-      name: (updates.name ?? current.name ?? '') as any,
-      description: (updates.description ?? current.description ?? null) as any,
-      price: (updates.price ?? current.price ?? null) as any,
-      unit: (updates.unit ?? current.unit ?? null) as any,
-    };
-    writeJson(getProductOverrideKey(id), next);
-    return [];
+  if (!count) {
+    throw new Error('Produto não foi atualizado no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
   }
   localStorage.removeItem(getProductOverrideKey(id));
-  return data;
+  return [];
 };
 
 export const deleteProduct = async (id: number) => {
-  const { data, error } = await supabase
+  const { error, count } = await supabase
     .from('products')
-    .delete()
+    .delete({ count: 'exact' })
     .eq('id', id)
-    .select('id');
+  ;
   throwQueryError(error);
-  if (!data || (Array.isArray(data) && data.length === 0)) {
-    writeJson(getProductDeletedKey(id), true);
-    return;
+  if (!count) {
+    throw new Error('Produto não foi excluído no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
   }
   localStorage.removeItem(getProductDeletedKey(id));
   localStorage.removeItem(getProductOverrideKey(id));

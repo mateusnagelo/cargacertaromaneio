@@ -1,7 +1,9 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { Plus, Trash2, User, FileText, ShoppingCart, DollarSign, CreditCard, Building2, Upload, MessageSquareText, X } from 'lucide-react';
-import { RomaneioData, Product, Expense, Observation } from '../types';
+import { addCompany } from '../api/companies';
+import { addCustomer } from '../api/customers';
+import { CompanyInfo, Customer, RomaneioData, Product, Expense, Observation } from '../types';
 
 interface RomaneioFormProps {
   data: RomaneioData;
@@ -16,6 +18,8 @@ interface RomaneioFormProps {
   onAddStockExpense: (id: string) => void;
   onOpenExpenseManager?: () => void;
   onOpenObservationManager?: () => void;
+  onCompanyCreated?: (company: CompanyInfo) => void;
+  onCustomerCreated?: (customer: Customer) => void;
 }
 
 const RomaneioForm: React.FC<RomaneioFormProps> = ({ 
@@ -30,7 +34,9 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
   onAddStockProduct,
   onAddStockExpense,
   onOpenExpenseManager,
-  onOpenObservationManager
+  onOpenObservationManager,
+  onCompanyCreated,
+  onCustomerCreated
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const xmlInputRef = useRef<HTMLInputElement>(null);
@@ -95,6 +101,14 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
   };
 
   const onlyDigits = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+  const emptyBanking: CompanyInfo['banking'] = {
+    bank: '',
+    pix: '',
+    type: 'CORRENTE',
+    agency: '',
+    account: '',
+    owner: '',
+  };
 
   const parseXmlToRomaneio = (xml: string) => {
     const parser = new DOMParser();
@@ -160,6 +174,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
     const destNeighborhood = textOf(enderDest, 'xBairro');
     const destCity = textOf(enderDest, 'xMun');
     const destState = textOf(enderDest, 'UF');
+    const destCep = textOf(enderDest, 'CEP');
 
     const detEls = Array.from((infNFe as any).getElementsByTagNameNS?.('*', 'det') ?? (infNFe as any).getElementsByTagName?.('det') ?? []);
     const products: Product[] = detEls.map((detEl: any, idx: number) => {
@@ -208,7 +223,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
     return {
       emissionDate,
       emit: { name: emitName, cnpj: emitCnpj, address: emitAddress, cep: emitCep },
-      dest: { name: destName, cnpj: destCnpj, address: destAddress, neighborhood: destNeighborhood, city: destCity, state: destState },
+      dest: { name: destName, cnpj: destCnpj, address: destAddress, neighborhood: destNeighborhood, city: destCity, state: destState, cep: destCep },
       products,
       expenses
     };
@@ -224,8 +239,59 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
 
       const emitCnpjDigits = onlyDigits(parsed.emit.cnpj);
       const destCnpjDigits = onlyDigits(parsed.dest.cnpj);
-      const matchedCompany = companies.find((c) => onlyDigits(c?.cnpj) === emitCnpjDigits);
-      const matchedCustomer = customers.find((c) => onlyDigits(c?.cnpj) === destCnpjDigits);
+      let companyToApply = companies.find((c) => onlyDigits(c?.cnpj) === emitCnpjDigits);
+      let customerToApply = customers.find((c) => onlyDigits(c?.cnpj) === destCnpjDigits);
+
+      const canCreateCompany = !!emitCnpjDigits && !!parsed.emit.name;
+      const canCreateCustomer = !!destCnpjDigits && !!parsed.dest.name;
+
+      const controller = new AbortController();
+
+      if (!companyToApply && canCreateCompany) {
+        const created = await addCompany(
+          {
+            name: parsed.emit.name,
+            cnpj: parsed.emit.cnpj,
+            ie: '',
+            location: 'MATRIZ',
+            address: parsed.emit.address,
+            cep: parsed.emit.cep,
+            tel: '',
+            banking: emptyBanking,
+          },
+          controller.signal
+        );
+        companyToApply = created;
+        onCompanyCreated?.(created);
+      }
+
+      if (!customerToApply && canCreateCustomer) {
+        const created = await addCustomer(
+          {
+            name: parsed.dest.name,
+            cnpj: parsed.dest.cnpj,
+            neighborhood: parsed.dest.neighborhood || '',
+            ie: '/',
+            city: parsed.dest.city || '',
+            address: parsed.dest.address || '',
+            state: parsed.dest.state || '',
+            cep: (parsed.dest as any)?.cep || '',
+            tel: '',
+            email: '',
+            fantasyName: '',
+            status: '',
+            openingDate: '',
+            legalNature: '',
+            capitalSocial: null,
+            cnaeMainCode: '',
+            cnaeMainDescription: '',
+            cnpjWsPayload: null,
+          },
+          controller.signal
+        );
+        customerToApply = created;
+        onCustomerCreated?.(created);
+      }
 
       setData((prev) => {
         const next: RomaneioData = { ...prev };
@@ -235,10 +301,10 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
           if (!next.saleDate) next.saleDate = parsed.emissionDate;
         }
 
-        if (matchedCompany) {
-          next.company = matchedCompany;
-          next.companyId = String(matchedCompany.id);
-          next.banking = matchedCompany.banking;
+        if (companyToApply) {
+          next.company = companyToApply;
+          next.companyId = String(companyToApply.id);
+          next.banking = companyToApply.banking;
         } else {
           next.company = {
             ...next.company,
@@ -249,9 +315,9 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
           };
         }
 
-        if (matchedCustomer) {
-          next.customer = matchedCustomer;
-          next.customerId = String(matchedCustomer.id);
+        if (customerToApply) {
+          next.customer = customerToApply;
+          next.customerId = String(customerToApply.id);
         }
 
         next.client = {

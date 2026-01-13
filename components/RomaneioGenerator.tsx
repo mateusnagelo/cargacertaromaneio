@@ -111,6 +111,32 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
     }
   };
 
+  const onlyDigits = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+
+  const handleCompanyCreated = (company: CompanyInfo) => {
+    setCompanies((prev) => {
+      const companyId = String(company?.id ?? '');
+      const companyCnpj = onlyDigits((company as any)?.cnpj);
+      const idx = prev.findIndex((c) => String(c?.id ?? '') === companyId || (!!companyCnpj && onlyDigits((c as any)?.cnpj) === companyCnpj));
+      if (idx === -1) return [company, ...prev];
+      const next = [...prev];
+      next[idx] = company;
+      return next;
+    });
+  };
+
+  const handleCustomerCreated = (customer: Customer) => {
+    setCustomers((prev) => {
+      const customerId = String(customer?.id ?? '');
+      const customerCnpj = onlyDigits((customer as any)?.cnpj);
+      const idx = prev.findIndex((c) => String(c?.id ?? '') === customerId || (!!customerCnpj && onlyDigits((c as any)?.cnpj) === customerCnpj));
+      if (idx === -1) return [customer, ...prev];
+      const next = [...prev];
+      next[idx] = customer;
+      return next;
+    });
+  };
+
   const activeCompany = romaneio.company;
   const activeCustomer = romaneio.customer;
 
@@ -397,6 +423,8 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
             onAddStockExpense={handleAddStockExpense}
             onOpenExpenseManager={() => setIsExpenseManagerOpen(true)}
             onOpenObservationManager={() => setIsObservationManagerOpen(true)}
+            onCompanyCreated={handleCompanyCreated}
+            onCustomerCreated={handleCustomerCreated}
             totals={totals}
           />
         ) : (

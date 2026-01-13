@@ -33,6 +33,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
   onOpenObservationManager
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const xmlInputRef = useRef<HTMLInputElement>(null);
   const [customerSearch, setCustomerSearch] = useState('');
 
   const filteredCustomers = useMemo(() => {
@@ -74,9 +75,204 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
       ...prev,
       customer: customer,
       customerId: String(customer.id),
-      client: { name: customer.name, cnpj: customer.cnpj, city: customer.city, state: customer.state }
+      client: {
+        name: customer.name,
+        cnpj: customer.cnpj,
+        neighborhood: customer.neighborhood,
+        ie: customer.ie,
+        city: customer.city,
+        address: customer.address,
+        state: customer.state
+      }
     }));
     setCustomerSearch('');
+  };
+
+  const parseXmlDecimal = (value: unknown) => {
+    const normalized = String(value ?? '').replace(/\s/g, '').replace(',', '.');
+    const n = parseFloat(normalized);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const onlyDigits = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+
+  const parseXmlToRomaneio = (xml: string) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'text/xml');
+    const parseError = doc.getElementsByTagName('parsererror')?.[0];
+    if (parseError) throw new Error('XML inválido.');
+
+    const firstByLocalName = (root: ParentNode, localName: string): Element | null => {
+      const byNs = (root as any).getElementsByTagNameNS?.('*', localName);
+      if (byNs && byNs.length > 0) return byNs[0] as Element;
+      const byTag = (root as any).getElementsByTagName?.(localName);
+      if (byTag && byTag.length > 0) return byTag[0] as Element;
+      return null;
+    };
+
+    const textOf = (root: ParentNode | null, localName: string) => {
+      if (!root) return '';
+      const el = firstByLocalName(root, localName);
+      return String(el?.textContent ?? '').trim();
+    };
+
+    const toDateInput = (raw: string) => {
+      const s = String(raw ?? '').trim();
+      if (!s) return '';
+      if (s.length >= 10 && s[4] === '-' && s[7] === '-') return s.slice(0, 10);
+      if (s.includes('T') && s.length >= 10) return s.slice(0, 10);
+      const d = new Date(s);
+      if (!Number.isFinite(d.getTime())) return '';
+      return d.toISOString().slice(0, 10);
+    };
+
+    const infNFe =
+      firstByLocalName(doc, 'infNFe') ||
+      firstByLocalName(firstByLocalName(doc, 'NFe') || doc, 'infNFe') ||
+      firstByLocalName(firstByLocalName(doc, 'nfeProc') || doc, 'infNFe');
+    if (!infNFe) throw new Error('Não foi possível localizar infNFe no XML.');
+
+    const ide = firstByLocalName(infNFe, 'ide');
+    const emit = firstByLocalName(infNFe, 'emit');
+    const dest = firstByLocalName(infNFe, 'dest');
+
+    const dhEmi = textOf(ide, 'dhEmi') || textOf(ide, 'dEmi');
+    const emissionDate = toDateInput(dhEmi);
+
+    const emitName = textOf(emit, 'xNome');
+    const emitCnpj = textOf(emit, 'CNPJ') || textOf(emit, 'CPF');
+    const enderEmit = firstByLocalName(emit || infNFe, 'enderEmit');
+    const emitAddress = [
+      textOf(enderEmit, 'xLgr'),
+      textOf(enderEmit, 'nro') ? `, ${textOf(enderEmit, 'nro')}` : '',
+      textOf(enderEmit, 'xCpl') ? ` - ${textOf(enderEmit, 'xCpl')}` : '',
+    ].join('').trim();
+    const emitCep = textOf(enderEmit, 'CEP');
+
+    const destName = textOf(dest, 'xNome');
+    const destCnpj = textOf(dest, 'CNPJ') || textOf(dest, 'CPF');
+    const enderDest = firstByLocalName(dest || infNFe, 'enderDest');
+    const destAddress = [
+      textOf(enderDest, 'xLgr'),
+      textOf(enderDest, 'nro') ? `, ${textOf(enderDest, 'nro')}` : '',
+      textOf(enderDest, 'xCpl') ? ` - ${textOf(enderDest, 'xCpl')}` : '',
+    ].join('').trim();
+    const destNeighborhood = textOf(enderDest, 'xBairro');
+    const destCity = textOf(enderDest, 'xMun');
+    const destState = textOf(enderDest, 'UF');
+
+    const detEls = Array.from((infNFe as any).getElementsByTagNameNS?.('*', 'det') ?? (infNFe as any).getElementsByTagName?.('det') ?? []);
+    const products: Product[] = detEls.map((detEl: any, idx: number) => {
+      const prodEl = firstByLocalName(detEl, 'prod');
+      const code = textOf(prodEl, 'cProd') || String((detEl as Element).getAttribute('nItem') || idx + 1);
+      const description = textOf(prodEl, 'xProd');
+      const quantity = parseXmlDecimal(textOf(prodEl, 'qCom'));
+      const unitValue = parseXmlDecimal(textOf(prodEl, 'vUnCom'));
+      return {
+        id: Math.random().toString(36).substr(2, 9),
+        code,
+        description,
+        kg: 0,
+        quantity,
+        unitValue
+      };
+    });
+
+    const totalEl = firstByLocalName(infNFe, 'total');
+    const icmsTotEl = firstByLocalName(totalEl || infNFe, 'ICMSTot');
+    const vFrete = parseXmlDecimal(textOf(icmsTotEl, 'vFrete'));
+    const vSeg = parseXmlDecimal(textOf(icmsTotEl, 'vSeg'));
+    const vOutro = parseXmlDecimal(textOf(icmsTotEl, 'vOutro'));
+    const vDesc = parseXmlDecimal(textOf(icmsTotEl, 'vDesc'));
+    const infAdic = firstByLocalName(infNFe, 'infAdic');
+    const infCpl = textOf(infAdic, 'infCpl');
+
+    const expenses: Expense[] = [];
+    const pushExpense = (description: string, total: number) => {
+      expenses.push({
+        id: Math.random().toString(36).substr(2, 9),
+        code: 'XML',
+        description,
+        quantity: '1',
+        unitValue: String(total),
+        total
+      });
+    };
+    if (vFrete > 0) pushExpense('FRETE (XML)', vFrete);
+    if (vSeg > 0) pushExpense('SEGURO (XML)', vSeg);
+    if (vOutro > 0) {
+      pushExpense('Outras Despesas', vOutro);
+    }
+    if (vDesc > 0) pushExpense('DESCONTO (XML)', -vDesc);
+
+    return {
+      emissionDate,
+      emit: { name: emitName, cnpj: emitCnpj, address: emitAddress, cep: emitCep },
+      dest: { name: destName, cnpj: destCnpj, address: destAddress, neighborhood: destNeighborhood, city: destCity, state: destState },
+      products,
+      expenses
+    };
+  };
+
+  const handleXmlImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const xmlText = await file.text();
+      const parsed = parseXmlToRomaneio(xmlText);
+
+      const emitCnpjDigits = onlyDigits(parsed.emit.cnpj);
+      const destCnpjDigits = onlyDigits(parsed.dest.cnpj);
+      const matchedCompany = companies.find((c) => onlyDigits(c?.cnpj) === emitCnpjDigits);
+      const matchedCustomer = customers.find((c) => onlyDigits(c?.cnpj) === destCnpjDigits);
+
+      setData((prev) => {
+        const next: RomaneioData = { ...prev };
+
+        if (parsed.emissionDate) {
+          next.emissionDate = parsed.emissionDate;
+          if (!next.saleDate) next.saleDate = parsed.emissionDate;
+        }
+
+        if (matchedCompany) {
+          next.company = matchedCompany;
+          next.companyId = String(matchedCompany.id);
+          next.banking = matchedCompany.banking;
+        } else {
+          next.company = {
+            ...next.company,
+            name: parsed.emit.name || next.company?.name,
+            cnpj: parsed.emit.cnpj || (next.company as any)?.cnpj,
+            address: parsed.emit.address || (next.company as any)?.address,
+            cep: parsed.emit.cep || (next.company as any)?.cep,
+          };
+        }
+
+        if (matchedCustomer) {
+          next.customer = matchedCustomer;
+          next.customerId = String(matchedCustomer.id);
+        }
+
+        next.client = {
+          ...next.client,
+          name: parsed.dest.name || next.client?.name,
+          cnpj: parsed.dest.cnpj || next.client?.cnpj,
+          address: parsed.dest.address || next.client?.address,
+          neighborhood: parsed.dest.neighborhood || next.client?.neighborhood,
+          city: parsed.dest.city || next.client?.city,
+          state: parsed.dest.state || next.client?.state,
+        };
+
+        next.products = parsed.products.length > 0 ? parsed.products : next.products;
+        next.expenses = parsed.expenses.length > 0 ? parsed.expenses : next.expenses;
+
+        return next;
+      });
+    } catch (err: any) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Erro ao importar XML: ${message}`);
+    }
   };
 
   const parseDecimal = (value: any) => {
@@ -222,9 +418,27 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
 
       {/* Header Info */}
       <section className={cardClasses}>
-        <div className="flex items-center gap-3 mb-6">
-          <div className="bg-orange-50 dark:bg-orange-900/30 p-2 rounded-xl text-orange-500"><FileText size={20} /></div>
-          <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Detalhes do Pedido</h2>
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="bg-orange-50 dark:bg-orange-900/30 p-2 rounded-xl text-orange-500"><FileText size={20} /></div>
+            <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Detalhes do Pedido</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              ref={xmlInputRef}
+              className="hidden"
+              accept=".xml,text/xml,application/xml"
+              onChange={handleXmlImport}
+            />
+            <button
+              type="button"
+              onClick={() => xmlInputRef.current?.click()}
+              className="px-4 py-2.5 rounded-2xl bg-orange-500 text-white font-black text-[10px] uppercase tracking-widest hover:bg-orange-600 transition-all shadow-lg shadow-orange-100 dark:shadow-none"
+            >
+              Importar XML
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <div>

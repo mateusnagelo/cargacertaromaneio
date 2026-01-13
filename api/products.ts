@@ -54,9 +54,13 @@ export const getProducts = async (signal?: AbortSignal): Promise<CatalogProduct[
 };
 
 export const addProduct = async (product: Omit<CatalogProduct, 'id' | 'created_at'>, signal?: AbortSignal) => {
+  const { data: userRes, error: userError } = await supabase.auth.getUser();
+  throwQueryError(userError);
+  const userId = userRes?.user?.id;
+  if (!userId) throw new Error('Usuário não autenticado.');
   const query = supabase
     .from('products')
-    .insert([product])
+    .insert([{ ...(product as any), owner_id: userId }])
     .select()
   const { data, error } = await applyAbortSignal(query, signal);
   throwQueryError(error);

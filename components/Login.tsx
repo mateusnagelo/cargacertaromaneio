@@ -10,43 +10,89 @@ import {
   ShieldCheck,
   Truck
 } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 
 interface LoginProps {
   onLogin: () => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     
     if (!username || !password) {
       setError('Por favor, preencha todos os campos.');
       return;
     }
 
-    setIsLoading(true);
-
-    // Simulação de login com as novas credenciais
-    setTimeout(() => {
-      if (username === 'cargacerta@gmail.com' && password === '1') {
-        onLogin();
-      } else {
-        setError('E-mail ou senha incorretos.');
-        setIsLoading(false);
+    if (mode === 'signup') {
+      if (!confirmPassword) {
+        setError('Por favor, confirme sua senha.');
+        return;
       }
-    }, 1200);
+      if (password !== confirmPassword) {
+        setError('As senhas não conferem.');
+        return;
+      }
+      if (String(password).length < 6) {
+        setError('A senha precisa ter pelo menos 6 caracteres.');
+        return;
+      }
+    }
+
+    setIsLoading(true);
+    try {
+      if (mode === 'signup') {
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: username,
+          password,
+        });
+        if (signUpError) {
+          setError(signUpError.message || 'Falha ao criar conta.');
+          setIsLoading(false);
+          return;
+        }
+        if (data.session) {
+          onLogin();
+          setIsLoading(false);
+          return;
+        }
+        setSuccess('Conta criada. Verifique seu e-mail para confirmar o cadastro.');
+        setIsLoading(false);
+        return;
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: username,
+        password,
+      });
+      if (signInError) {
+        setError(signInError.message || 'E-mail ou senha incorretos.');
+        setIsLoading(false);
+        return;
+      }
+      onLogin();
+      setIsLoading(false);
+    } catch (err: any) {
+      setError(String(err?.message || err || 'Falha ao autenticar.'));
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -70,12 +116,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         <div className="bg-white/80 backdrop-blur-2xl border border-white p-8 md:p-10 rounded-[40px] shadow-2xl shadow-yellow-100/50">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-2 h-8 bg-yellow-400 rounded-full"></div>
-            <h2 className="text-xl font-black text-gray-800 uppercase tracking-wider">Acesso ao Sistema</h2>
+            <h2 className="text-xl font-black text-gray-800 uppercase tracking-wider">
+              {mode === 'signup' ? 'Criar Conta' : 'Acesso ao Sistema'}
+            </h2>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">E-mail de Acesso</label>
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">E-mail</label>
               <div className="relative group">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-yellow-600 transition-colors">
                   <User size={20} />
@@ -91,7 +139,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Chave de Segurança</label>
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Senha</label>
               <div className="relative group">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-yellow-600 transition-colors">
                   <Lock size={20} />
@@ -113,6 +161,38 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               </div>
             </div>
 
+            {mode === 'signup' && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Confirmar Senha</label>
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-yellow-600 transition-colors">
+                    <Lock size={20} />
+                  </div>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-12 pr-12 py-4 bg-gray-50/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-yellow-100 focus:border-yellow-400 focus:bg-white transition-all text-sm font-bold text-gray-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {success && (
+              <div className="bg-green-50 text-green-700 px-4 py-3 rounded-2xl text-xs font-bold border border-green-100 flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-green-600 rounded-full"></div>
+                {success}
+              </div>
+            )}
+
             {error && (
               <div className="bg-red-50 text-red-600 px-4 py-3 rounded-2xl text-xs font-bold border border-red-100 flex items-center gap-2 animate-shake">
                 <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse"></div>
@@ -128,14 +208,28 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               {isLoading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>Autenticando...</span>
+                  <span>{mode === 'signup' ? 'Criando conta...' : 'Autenticando...'}</span>
                 </>
               ) : (
                 <>
-                  <span>Entrar no CargaCerta</span>
+                  <span>{mode === 'signup' ? 'Criar Conta' : 'Entrar no CargaCerta'}</span>
                   <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMode((m) => (m === 'login' ? 'signup' : 'login'));
+                setError('');
+                setSuccess('');
+                setPassword('');
+                setConfirmPassword('');
+              }}
+              className="w-full text-center text-[11px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              {mode === 'signup' ? 'Já tenho conta' : 'Criar conta'}
             </button>
           </form>
 

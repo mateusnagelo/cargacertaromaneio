@@ -153,6 +153,10 @@ export const getCompanies = async (signal?: AbortSignal): Promise<CompanyInfo[]>
 };
 
 export const addCompany = async (company: Omit<CompanyInfo, 'id' | 'created_at'>, signal?: AbortSignal) => {
+  const { data: userRes, error: userError } = await supabase.auth.getUser();
+  throwQueryError(userError);
+  const userId = userRes?.user?.id;
+  if (!userId) throw new Error('Usuário não autenticado.');
   const tryInsert = async (payload: any) => {
     const query = supabase.from('companies').insert([payload]).select('*').single();
     const { data, error } = await applyAbortSignal(query, signal);
@@ -161,8 +165,8 @@ export const addCompany = async (company: Omit<CompanyInfo, 'id' | 'created_at'>
   };
 
   const removed: Record<string, any> = {};
-  const payload: any = { ...company };
-  const original: any = { ...company };
+  const payload: any = { ...company, owner_id: userId };
+  const original: any = { ...company, owner_id: userId };
 
   for (let attempt = 0; attempt < 50; attempt++) {
     try {
@@ -304,9 +308,12 @@ export const updateCompany = async (id: string, updates: Partial<CompanyInfo>, s
 };
 
 export const deleteCompany = async (id: string, signal?: AbortSignal) => {
-  const query = supabase.from('companies').delete().eq('id', id);
-  const { error } = await applyAbortSignal(query, signal);
+  const query = supabase.from('companies').delete({ count: 'exact' }).eq('id', id);
+  const { error, count } = await applyAbortSignal(query, signal);
   throwQueryError(error);
+  if (!count) {
+    throw new Error('Empresa não foi excluída no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+  }
   localStorage.removeItem(getCompanyBankingKey(id));
   localStorage.removeItem(getCompanyMetaKey(id));
 };

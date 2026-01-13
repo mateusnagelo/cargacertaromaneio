@@ -140,6 +140,10 @@ export const addRomaneio = async (
   romaneio: Omit<RomaneioData, 'id' | 'created_at'>,
   signal?: AbortSignal
 ) => {
+  const { data: userRes, error: userError } = await supabase.auth.getUser();
+  throwQueryError(userError);
+  const userId = userRes?.user?.id;
+  if (!userId) throw new Error('Usuário não autenticado.');
   const tryInsert = async (payload: any) => {
     for (const k of Object.keys(payload)) {
       if (payload[k] === '') payload[k] = null;
@@ -197,6 +201,7 @@ export const addRomaneio = async (
   const baseObs = (romaneio as any)?.observation ?? null;
 
   const candidatePtNoAccent: any = {
+    owner_id: userId,
     guia: baseNumber,
     numero: baseNumber,
     data_de_emissao: baseDate,
@@ -209,6 +214,7 @@ export const addRomaneio = async (
   };
 
   const candidatePtAccent: any = {
+    owner_id: userId,
     guia: baseNumber,
     numero: baseNumber,
     data_de_emissao: baseDate,
@@ -221,6 +227,7 @@ export const addRomaneio = async (
   };
 
   const candidateEn: any = {
+    owner_id: userId,
     number: baseNumber,
     status: statusNorm || 'PENDENTE',
     company_id: baseCompanyId,
@@ -338,14 +345,20 @@ export const addRomaneio = async (
 };
 
 export const deleteRomaneio = async (id: string, signal?: AbortSignal): Promise<void> => {
-  const query = supabase.from('romaneios').delete().eq('id', id);
-  const { error } = await applyAbortSignal(query, signal);
+  const query = supabase.from('romaneios').delete({ count: 'exact' }).eq('id', id);
+  const { error, count } = await applyAbortSignal(query, signal);
   throwQueryError(error);
+  if (!count) {
+    throw new Error('Romaneio não foi excluído no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+  }
   deleteJson(getRomaneioBackupKey(String(id)));
 };
 
 export const updateRomaneioStatus = async (id: string, status: RomaneioStatus, signal?: AbortSignal): Promise<void> => {
-  const query = supabase.from('romaneios').update({ status }).eq('id', id);
-  const { error } = await applyAbortSignal(query, signal);
+  const query = supabase.from('romaneios').update({ status }, { count: 'exact' }).eq('id', id);
+  const { error, count } = await applyAbortSignal(query, signal);
   throwQueryError(error);
+  if (!count) {
+    throw new Error('Romaneio não foi atualizado no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+  }
 };

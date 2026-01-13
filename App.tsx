@@ -27,13 +27,12 @@ import RomaneioGenerator from './components/RomaneioGenerator';
 import RomaneioTracking from './components/RomaneioTracking';
 import ObservationManager from './components/ObservationManager';
 import Login from './components/Login';
+import { supabase } from './supabaseClient';
 
 type Screen = 'dashboard' | 'companies' | 'customers' | 'products' | 'romaneios' | 'expenses' | 'tracking' | 'observations';
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return localStorage.getItem('bb_auth') === 'true';
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeScreen, setActiveScreen] = useState<Screen>('tracking');
   const [selectedRomaneio, setSelectedRomaneio] = useState<RomaneioData | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -52,13 +51,27 @@ const App: React.FC = () => {
     }
   }, [isDarkMode]);
 
+  useEffect(() => {
+    let isMounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!isMounted) return;
+      setIsAuthenticated(!!data.session);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+    return () => {
+      isMounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
-  const handleLogout = (e: React.MouseEvent) => {
+  const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
     if (window.confirm('Deseja realmente sair do sistema?')) {
-      localStorage.removeItem('bb_auth');
-      setIsAuthenticated(false);
+      await supabase.auth.signOut();
       setIsSidebarOpen(false);
     }
   };
@@ -98,10 +111,7 @@ const App: React.FC = () => {
   };
 
   if (!isAuthenticated) {
-    return <Login onLogin={() => {
-      localStorage.setItem('bb_auth', 'true');
-      setIsAuthenticated(true);
-    }} />;
+    return <Login onLogin={() => setIsAuthenticated(true)} />;
   }
 
   const menuItems = [

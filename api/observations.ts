@@ -40,7 +40,11 @@ export const getObservations = async (signal?: AbortSignal): Promise<Observation
 };
 
 export const addObservation = async (observation: Omit<Observation, 'id' | 'created_at'>): Promise<Observation> => {
-  const payload: any = { id: uuidV4(), ...observation };
+  const { data: userRes, error: userError } = await supabase.auth.getUser();
+  throwQueryError(userError);
+  const userId = userRes?.user?.id;
+  if (!userId) throw new Error('Usuário não autenticado.');
+  const payload: any = { id: uuidV4(), owner_id: userId, ...observation };
   const { data, error } = await supabase.from('observations').insert(payload).select().single();
   if (error) throw new Error(error.message);
   return data;
@@ -53,6 +57,9 @@ export const updateObservation = async (id: string, updates: Partial<Observation
 };
 
 export const deleteObservation = async (id: string): Promise<void> => {
-  const { error } = await supabase.from('observations').delete().eq('id', id);
+  const { error, count } = await supabase.from('observations').delete({ count: 'exact' }).eq('id', id);
   if (error) throw new Error(error.message);
+  if (!count) {
+    throw new Error('Observação não foi excluída no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+  }
 };

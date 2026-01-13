@@ -27,7 +27,6 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 type CustomerOverride = Partial<Omit<Customer, 'id'>>;
 
 const getCustomerOverrideKey = (id: string) => `bb_customer_override_${id}`;
-const getCustomerDeletedKey = (id: string) => `bb_customer_deleted_${id}`;
 
 const readJson = <T,>(key: string): T | null => {
   try {
@@ -122,13 +121,16 @@ export const getCustomers = async (signal?: AbortSignal): Promise<Customer[]> =>
       cnaeMainDescription: String(row.cnaeMainDescription ?? ''),
       cnpjWsPayload: (row.cnpjWsPayload ?? null) as any,
     };
-    if (readJson<boolean>(getCustomerDeletedKey(customer.id))) return null as any;
     const override = readJson<CustomerOverride>(getCustomerOverrideKey(customer.id));
     return override ? ({ ...customer, ...override } as Customer) : customer;
   }).filter(Boolean) as Customer[];
 };
 
 export const addCustomer = async (customer: Omit<Customer, 'id'>, signal?: AbortSignal) => {
+  const { data: userRes, error: userError } = await supabase.auth.getUser();
+  throwQueryError(userError);
+  const userId = userRes?.user?.id;
+  if (!userId) throw new Error('Usuário não autenticado.');
   const tryInsert = async (payload: any) => {
     const query = supabase
       .from('customers')
@@ -142,6 +144,7 @@ export const addCustomer = async (customer: Omit<Customer, 'id'>, signal?: Abort
 
   const removed: Record<string, any> = {};
   const payload: any = {
+    owner_id: userId,
     name: customer.name,
     cnpj: customer.cnpj,
     document: customer.cnpj,
@@ -263,16 +266,13 @@ export const updateCustomer = async (id: string, updates: Partial<Omit<Customer,
 export const deleteCustomer = async (id: string, signal?: AbortSignal) => {
   const query = supabase
     .from('customers')
-    .delete()
-    .eq('id', id)
-    .select()
-  const { data, error } = await applyAbortSignal(query, signal);
+    .delete({ count: 'exact' })
+    .eq('id', id);
+  const { error, count } = await applyAbortSignal(query, signal);
   throwQueryError(error);
-  if (!data || (Array.isArray(data) && data.length === 0)) {
-    writeJson(getCustomerDeletedKey(id), true);
-    return [];
+  if (!count) {
+    throw new Error('Cliente não foi excluído no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
   }
-  localStorage.removeItem(getCustomerDeletedKey(id));
   localStorage.removeItem(getCustomerOverrideKey(id));
-  return data;
+  return [];
 };

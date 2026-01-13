@@ -47,11 +47,12 @@ const normalizeExpenseRow = (row: any): ExpenseStock => {
   };
 };
 
-const toExpensePayload = (table: string, input: Partial<ExpenseStock>) => {
+const toExpensePayload = (table: string, input: Partial<ExpenseStock>, ownerId: string | null) => {
   const base: any = {
     code: input.code,
     description: input.description,
   };
+  if (ownerId) base.owner_id = ownerId;
   const value = toOptionalNumber((input as any).defaultUnitValue);
   if (table === 'expenses_stock') {
     if ('defaultUnitValue' in input) base.default_unit_value = value ?? null;
@@ -76,9 +77,13 @@ export const getExpenses = async (signal?: AbortSignal): Promise<ExpenseStock[]>
 };
 
 export const addExpense = async (expense: Omit<ExpenseStock, 'id' | 'created_at'>) => {
+  const { data: userRes, error: userError } = await supabase.auth.getUser();
+  throwQueryError(userError);
+  const userId = userRes?.user?.id;
+  if (!userId) throw new Error('Usuário não autenticado.');
   let lastError: any = null;
   for (const table of getExpensesTableCandidates()) {
-    const payload = toExpensePayload(table, expense);
+    const payload = toExpensePayload(table, expense, userId);
     const { data, error } = await supabase.from(table).insert([payload]).select();
     if (!error) {
       const rows: any[] = data || [];
@@ -94,9 +99,12 @@ export const addExpense = async (expense: Omit<ExpenseStock, 'id' | 'created_at'
 export const updateExpense = async (id: string, updates: Partial<ExpenseStock>) => {
   let lastError: any = null;
   for (const table of getExpensesTableCandidates()) {
-    const payload = toExpensePayload(table, updates);
-    const { data, error } = await supabase.from(table).update(payload).eq('id', id).select();
+    const payload = toExpensePayload(table, updates, null);
+    const { data, error, count } = await supabase.from(table).update(payload, { count: 'exact' }).eq('id', id).select();
     if (!error) {
+      if (!count) {
+        throw new Error('Despesa não foi atualizada no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+      }
       const rows: any[] = data || [];
       return rows.map(normalizeExpenseRow);
     }
@@ -110,8 +118,13 @@ export const updateExpense = async (id: string, updates: Partial<ExpenseStock>) 
 export const deleteExpense = async (id: string) => {
   let lastError: any = null;
   for (const table of getExpensesTableCandidates()) {
-    const { error } = await supabase.from(table).delete().eq('id', id);
-    if (!error) return;
+    const { error, count } = await supabase.from(table).delete({ count: 'exact' }).eq('id', id);
+    if (!error) {
+      if (!count) {
+        throw new Error('Despesa não foi excluída no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+      }
+      return;
+    }
     lastError = error;
     if (isMissingTableError(error)) continue;
     throwQueryError(error);

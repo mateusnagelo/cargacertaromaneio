@@ -15,10 +15,12 @@ import mapaBrasil from '../mapabrasil.png';
 
 interface LoginProps {
   onLogin: () => void;
+  forcePasswordReset?: boolean;
+  onPasswordResetDone?: () => void;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+const Login: React.FC<LoginProps> = ({ onLogin, forcePasswordReset, onPasswordResetDone }) => {
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'reset'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,11 +34,99 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    const parseRecoveryFromHash = () => {
+      const hash = String(window.location.hash || '').replace(/^#/, '');
+      const params = new URLSearchParams(hash);
+      return params.get('type') === 'recovery';
+    };
+
+    const apply = () => {
+      const isRecovery = !!forcePasswordReset || parseRecoveryFromHash();
+      if (isRecovery) {
+        setMode('reset');
+        setError('');
+        setSuccess('');
+        setPassword('');
+        setConfirmPassword('');
+      }
+    };
+
+    apply();
+    window.addEventListener('hashchange', apply);
+    return () => window.removeEventListener('hashchange', apply);
+  }, [forcePasswordReset]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
     
+    if (mode === 'forgot') {
+      if (!username) {
+        setError('Informe seu e-mail.');
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const redirectTo = window.location.origin;
+        const { error: resetErr } = await supabase.auth.resetPasswordForEmail(username, { redirectTo });
+        if (resetErr) {
+          setError(resetErr.message || 'Falha ao enviar e-mail de recuperação.');
+          setIsLoading(false);
+          return;
+        }
+        setSuccess('Enviamos um link de recuperação para seu e-mail.');
+        setIsLoading(false);
+        return;
+      } catch (err: any) {
+        setError(String(err?.message || err || 'Falha ao enviar e-mail de recuperação.'));
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    if (mode === 'reset') {
+      if (!password) {
+        setError('Informe a nova senha.');
+        return;
+      }
+      if (!confirmPassword) {
+        setError('Por favor, confirme a nova senha.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('As senhas não conferem.');
+        return;
+      }
+      if (String(password).length < 6) {
+        setError('A senha precisa ter pelo menos 6 caracteres.');
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const { error: updateErr } = await supabase.auth.updateUser({ password });
+        if (updateErr) {
+          setError(updateErr.message || 'Falha ao atualizar senha.');
+          setIsLoading(false);
+          return;
+        }
+        await supabase.auth.signOut();
+        window.location.hash = '';
+        setMode('login');
+        setPassword('');
+        setConfirmPassword('');
+        setSuccess('Senha atualizada. Faça login com a nova senha.');
+        onPasswordResetDone?.();
+        setIsLoading(false);
+        return;
+      } catch (err: any) {
+        setError(String(err?.message || err || 'Falha ao atualizar senha.'));
+        setIsLoading(false);
+        return;
+      }
+    }
+
     if (!username || !password) {
       setError('Por favor, preencha todos os campos.');
       return;
@@ -144,7 +234,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <div className="flex items-center gap-3 mb-8">
             <div className="w-2 h-8 bg-yellow-400 rounded-full"></div>
             <h2 className="text-xl font-black text-gray-800 uppercase tracking-wider">
-              {mode === 'signup' ? 'Criar Conta' : 'Acesso ao Sistema'}
+              {mode === 'signup' ? 'Criar Conta' : mode === 'forgot' ? 'Recuperar Senha' : mode === 'reset' ? 'Nova Senha' : 'Acesso ao Sistema'}
             </h2>
           </div>
 
@@ -160,37 +250,40 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="exemplo@cargacerta.com"
+                  disabled={mode === 'reset'}
                   className="w-full pl-12 pr-4 py-4 bg-gray-50/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-yellow-100 focus:border-yellow-400 focus:bg-white transition-all text-sm font-bold text-gray-900"
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Senha</label>
-              <div className="relative group">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-yellow-600 transition-colors">
-                  <Lock size={20} />
-                </div>
-                <input 
-                  type={showPassword ? 'text' : 'password'} 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-12 pr-12 py-4 bg-gray-50/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-yellow-100 focus:border-yellow-400 focus:bg-white transition-all text-sm font-bold text-gray-900"
-                />
-                <button 
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-              </div>
-            </div>
-
-            {mode === 'signup' && (
+            {mode !== 'forgot' && (
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Confirmar Senha</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">{mode === 'reset' ? 'Nova Senha' : 'Senha'}</label>
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-yellow-600 transition-colors">
+                    <Lock size={20} />
+                  </div>
+                  <input 
+                    type={showPassword ? 'text' : 'password'} 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-12 pr-12 py-4 bg-gray-50/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-yellow-100 focus:border-yellow-400 focus:bg-white transition-all text-sm font-bold text-gray-900"
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {(mode === 'signup' || mode === 'reset') && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">{mode === 'reset' ? 'Confirmar Nova Senha' : 'Confirmar Senha'}</label>
                 <div className="relative group">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-yellow-600 transition-colors">
                     <Lock size={20} />
@@ -235,15 +328,31 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               {isLoading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>{mode === 'signup' ? 'Criando conta...' : 'Autenticando...'}</span>
+                  <span>{mode === 'signup' ? 'Criando conta...' : mode === 'forgot' ? 'Enviando...' : mode === 'reset' ? 'Atualizando...' : 'Autenticando...'}</span>
                 </>
               ) : (
                 <>
-                  <span>{mode === 'signup' ? 'Criar Conta' : 'Entrar no CargaCerta'}</span>
+                  <span>{mode === 'signup' ? 'Criar Conta' : mode === 'forgot' ? 'Enviar Link' : mode === 'reset' ? 'Atualizar Senha' : 'Entrar no CargaCerta'}</span>
                   <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </>
               )}
             </button>
+
+            {mode === 'login' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('forgot');
+                  setError('');
+                  setSuccess('');
+                  setPassword('');
+                  setConfirmPassword('');
+                }}
+                className="w-full text-center text-[11px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 transition-colors"
+              >
+                Esqueci minha senha
+              </button>
+            )}
 
             <button
               type="button"
@@ -254,10 +363,29 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 setPassword('');
                 setConfirmPassword('');
               }}
+              disabled={mode === 'forgot' || mode === 'reset'}
               className="w-full text-center text-[11px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 transition-colors"
             >
               {mode === 'signup' ? 'Já tenho conta' : 'Criar conta'}
             </button>
+
+            {(mode === 'forgot' || mode === 'reset') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setError('');
+                  setSuccess('');
+                  setPassword('');
+                  setConfirmPassword('');
+                  window.location.hash = '';
+                  onPasswordResetDone?.();
+                }}
+                className="w-full text-center text-[11px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 transition-colors"
+              >
+                Voltar
+              </button>
+            )}
           </form>
 
           <div className="mt-8 pt-8 border-t border-gray-50 flex items-center justify-between text-gray-400">

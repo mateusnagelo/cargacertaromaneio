@@ -38,6 +38,7 @@ type Screen = 'dashboard' | 'companies' | 'customers' | 'products' | 'romaneios'
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [forcePasswordReset, setForcePasswordReset] = useState(false);
   const [activeScreen, setActiveScreen] = useState<Screen>('tracking');
   const [selectedRomaneio, setSelectedRomaneio] = useState<RomaneioData | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -66,13 +67,30 @@ const App: React.FC = () => {
       if (!isMounted) return;
       setIsAuthenticated(!!data.session);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setForcePasswordReset(true);
+        setIsAuthenticated(false);
+        return;
+      }
       setIsAuthenticated(!!session);
     });
     return () => {
       isMounted = false;
       sub.subscription.unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    const parse = () => {
+      const hash = String(window.location.hash || '').replace(/^#/, '');
+      const params = new URLSearchParams(hash);
+      const isRecovery = params.get('type') === 'recovery';
+      setForcePasswordReset(isRecovery);
+    };
+    parse();
+    window.addEventListener('hashchange', parse);
+    return () => window.removeEventListener('hashchange', parse);
   }, []);
 
   useEffect(() => {
@@ -168,8 +186,17 @@ const App: React.FC = () => {
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
     if (window.confirm('Deseja realmente sair do sistema?')) {
-      await supabase.auth.signOut();
-      setIsSidebarOpen(false);
+      try {
+        await supabase.auth.signOut({ scope: 'local' } as any);
+      } catch {
+      } finally {
+        setIsAuthenticated(false);
+        setForcePasswordReset(false);
+        setSelectedRomaneio(null);
+        setIsSidebarOpen(false);
+        setShowDueSoonModal(false);
+        setDueSoonRomaneios([]);
+      }
     }
   };
 
@@ -229,6 +256,16 @@ const App: React.FC = () => {
         return <div className="p-8 dark:text-gray-300">Selecione uma opção no menu.</div>;
     }
   };
+
+  if (forcePasswordReset) {
+    return (
+      <Login
+        onLogin={() => setIsAuthenticated(true)}
+        forcePasswordReset
+        onPasswordResetDone={() => setForcePasswordReset(false)}
+      />
+    );
+  }
 
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;

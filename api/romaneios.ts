@@ -97,6 +97,8 @@ export const getRomaneios = async (signal?: AbortSignal): Promise<RomaneioData[]
     if (typeof merged.status === 'string') {
       const s = merged.status.trim().toUpperCase();
       if (s.startsWith('PEND')) merged.status = 'PENDENTE';
+      else if (s.includes('SAIU') && s.includes('ENTREGA')) merged.status = 'PENDENTE';
+      else if (s.startsWith('ENTREG')) merged.status = 'CONCLUÍDO';
       else if (s.replaceAll('Í', 'I').startsWith('CONCL')) merged.status = 'CONCLUÍDO';
       else if (s.startsWith('CANC')) merged.status = 'CANCELADO';
     }
@@ -360,5 +362,30 @@ export const updateRomaneioStatus = async (id: string, status: RomaneioStatus, s
   throwQueryError(error);
   if (!count) {
     throw new Error('Romaneio não foi atualizado no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+  }
+};
+
+export type RomaneioEmailNotificationType =
+  | 'ROMANEIO_CRIADO'
+  | 'LEMBRETE_PAGAMENTO';
+
+export const sendRomaneioEmailNotification = async (
+  params: { romaneioId: string; type: RomaneioEmailNotificationType },
+  signal?: AbortSignal
+): Promise<{ skipped?: boolean; reason?: string } | null> => {
+  try {
+    const res: any = await (supabase as any).functions.invoke('send-romaneio-email', {
+      body: params,
+      signal,
+    });
+    if (res?.error) {
+      const msg = String(res.error?.message || res.error);
+      throw new Error(msg);
+    }
+    return (res?.data ?? null) as any;
+  } catch (e: any) {
+    const msg = String(e?.message || e || '');
+    if (msg.includes('AbortError') || msg.includes('aborted')) return null;
+    throw e;
   }
 };

@@ -19,7 +19,13 @@ import {
   Info
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils';
-import { addRomaneio, getRomaneios, deleteRomaneio as deleteRomaneioAPI, updateRomaneioStatus as updateStatusAPI } from '../api/romaneios';
+import {
+  addRomaneio,
+  getRomaneios,
+  deleteRomaneio as deleteRomaneioAPI,
+  updateRomaneioStatus as updateStatusAPI,
+  sendRomaneioEmailNotification,
+} from '../api/romaneios';
 
 interface Props {
   onView: (romaneio: RomaneioData) => void;
@@ -148,7 +154,14 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     };
 
     try {
-      await addRomaneio(newRomaneioData);
+      const created = await addRomaneio(newRomaneioData);
+      try {
+        if (created?.id) {
+          await sendRomaneioEmailNotification({ romaneioId: String(created.id), type: 'ROMANEIO_CRIADO' });
+        }
+      } catch (e) {
+        console.error('Falha ao enviar e-mail (Romaneio criado):', e);
+      }
       fetchRomaneios(); // Refresh the list
       setCloneTarget(null); // Close the modal
     } catch (error) {
@@ -196,7 +209,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
             />
           </div>
           <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scroll-hide">
-            {(['TODOS', 'PENDENTE', 'CONCLUÍDO'] as const).map(s => (
+            {(['TODOS', 'PENDENTE', 'CONCLUÍDO', 'CANCELADO'] as const).map(s => (
               <button 
                 key={s}
                 onClick={() => setStatusFilter(s)}

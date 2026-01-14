@@ -12,6 +12,8 @@ import {
   Settings,
   DollarSign,
   ClipboardList,
+  BarChart3,
+  AlertTriangle,
   Sun,
   Moon,
   MessageSquareText,
@@ -27,15 +29,22 @@ import RomaneioGenerator from './components/RomaneioGenerator';
 import RomaneioTracking from './components/RomaneioTracking';
 import ObservationManager from './components/ObservationManager';
 import Login from './components/Login';
+import Reports from './components/Reports';
+import { getRomaneios, sendRomaneioEmailNotification } from './api/romaneios';
 import { supabase } from './supabaseClient';
+import { formatCurrency, formatDate } from './utils';
 
-type Screen = 'dashboard' | 'companies' | 'customers' | 'products' | 'romaneios' | 'expenses' | 'tracking' | 'observations';
+type Screen = 'dashboard' | 'companies' | 'customers' | 'products' | 'romaneios' | 'expenses' | 'tracking' | 'observations' | 'reports';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeScreen, setActiveScreen] = useState<Screen>('tracking');
   const [selectedRomaneio, setSelectedRomaneio] = useState<RomaneioData | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [dueSoonRomaneios, setDueSoonRomaneios] = useState<RomaneioData[]>([]);
+  const [showDueSoonModal, setShowDueSoonModal] = useState(false);
+  const [dueSoonLoading, setDueSoonLoading] = useState(false);
+  const [dueSoonEmailSending, setDueSoonEmailSending] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('bb_theme');
     return saved === 'dark';
@@ -66,13 +75,119 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    const msDay = 24 * 60 * 60 * 1000;
+    const today = new Date();
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const thresholdDays = 3;
+
+    const diffDays = (isoDate: string) => {
+      const raw = String(isoDate || '').trim();
+      if (!raw) return null;
+      const d = new Date(`${raw}T00:00:00`);
+      const t = d.getTime();
+      if (!Number.isFinite(t)) return null;
+      return Math.floor((t - todayMidnight.getTime()) / msDay);
+    };
+
+    const run = async () => {
+      try {
+        setDueSoonLoading(true);
+        const all = await getRomaneios(signal);
+        const dueSoon = (all || [])
+          .filter((r) => {
+            if (!r) return false;
+            const s = (r.status || 'PENDENTE') as RomaneioStatus;
+            if (s !== 'PENDENTE') return false;
+            const d = diffDays(String((r as any).dueDate || ''));
+            if (d === null) return false;
+            return d >= 0 && d <= thresholdDays;
+          })
+          .sort((a, b) => {
+            const da = diffDays(String((a as any).dueDate || '')) ?? 9999;
+            const db = diffDays(String((b as any).dueDate || '')) ?? 9999;
+            if (da !== db) return da - db;
+            return String(a.number || '').localeCompare(String(b.number || ''), undefined, { numeric: true });
+          });
+
+        setDueSoonRomaneios(dueSoon);
+        setShowDueSoonModal(dueSoon.length > 0);
+
+        const targets = dueSoon.slice(0, 20).filter((r) => !!r?.id);
+        if (targets.length) {
+          await Promise.allSettled(
+            targets.map((r) =>
+              sendRomaneioEmailNotification({ romaneioId: String(r.id), type: 'LEMBRETE_PAGAMENTO' }, signal)
+            )
+          );
+        }
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') {
+          setDueSoonRomaneios([]);
+          setShowDueSoonModal(false);
+        }
+      } finally {
+        setDueSoonLoading(false);
+      }
+    };
+
+    run();
+    return () => controller.abort();
+  }, [isAuthenticated]);
+
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
+
+  const computeRomaneioTotal = (r: RomaneioData) => {
+    const productsTotal = Array.isArray(r.products)
+      ? r.products.reduce((acc, p) => acc + (Number(p?.quantity || 0) * Number(p?.unitValue || 0)), 0)
+      : 0;
+    const expensesTotal = Array.isArray(r.expenses)
+      ? r.expenses.reduce((acc, e) => acc + (Number((e as any)?.total) || 0), 0)
+      : 0;
+    const itemsTotal = productsTotal + expensesTotal;
+    const dbTotal = Number((r as any)?.montante_total ?? (r as any)?.total_value ?? 0) || 0;
+    return itemsTotal > 0 ? itemsTotal : dbTotal;
+  };
+
+  const daysUntilDue = (isoDate: string) => {
+    const raw = String(isoDate || '').trim();
+    if (!raw) return null;
+    const d = new Date(`${raw}T00:00:00`);
+    const t = d.getTime();
+    if (!Number.isFinite(t)) return null;
+    const now = new Date();
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return Math.floor((t - todayMidnight) / (24 * 60 * 60 * 1000));
+  };
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
     if (window.confirm('Deseja realmente sair do sistema?')) {
       await supabase.auth.signOut();
       setIsSidebarOpen(false);
+    }
+  };
+
+  const sendDueSoonReminders = async () => {
+    if (!dueSoonRomaneios.length) return;
+    const targets = dueSoonRomaneios.slice(0, 30).filter((r) => !!r?.id);
+    if (!targets.length) return;
+    setDueSoonEmailSending(true);
+    try {
+      const results = await Promise.allSettled(
+        targets.map((r) => sendRomaneioEmailNotification({ romaneioId: String(r.id), type: 'LEMBRETE_PAGAMENTO' }))
+      );
+      const sent = results.filter((r) => r.status === 'fulfilled' && !(r.value as any)?.skipped).length;
+      const skipped = results.filter((r) => r.status === 'fulfilled' && !!(r.value as any)?.skipped).length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      alert(`E-mails: enviados ${sent}, ignorados ${skipped}, falharam ${failed}.`);
+    } finally {
+      setDueSoonEmailSending(false);
     }
   };
 
@@ -95,12 +210,17 @@ const App: React.FC = () => {
         return <ObservationManager />;
       case 'expenses':
         return <ExpenseManager />;
+      case 'reports':
+        return <Reports />;
       case 'romaneios':
         return (
           <RomaneioGenerator
             onSave={() => {
               setSelectedRomaneio(null);
               setActiveScreen('tracking');
+            }}
+            onCreateNew={() => {
+              setSelectedRomaneio(null);
             }}
             initialData={selectedRomaneio}
           />
@@ -117,6 +237,7 @@ const App: React.FC = () => {
   const menuItems = [
     { id: 'tracking', label: 'Histórico', icon: ClipboardList, color: 'text-purple-500' },
     { id: 'romaneios', label: 'Novo Romaneio', icon: FileText, color: 'text-orange-500' },
+    { id: 'reports', label: 'Relatórios', icon: BarChart3, color: 'text-blue-500' },
     { id: 'products', label: 'Estoque', icon: Package, color: 'text-green-500' },
     { id: 'expenses', label: 'Despesas', icon: DollarSign, color: 'text-pink-500' },
     { id: 'observations', label: 'Observações', icon: MessageSquareText, color: 'text-cyan-500' },
@@ -156,6 +277,80 @@ const App: React.FC = () => {
           className="no-print lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[60]"
           onClick={() => setIsSidebarOpen(false)}
         />
+      )}
+
+      {showDueSoonModal && (
+        <div className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm p-4 flex items-center justify-center">
+          <div className="bg-white dark:bg-slate-900 rounded-[28px] w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl border border-gray-100 dark:border-slate-800">
+            <div className="p-6 border-b border-gray-50 dark:border-slate-800 flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded-2xl text-yellow-700 dark:text-yellow-400">
+                  <AlertTriangle size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base md:text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">
+                    Romaneios próximos do vencimento
+                  </h3>
+                  <p className="text-[11px] font-bold text-gray-500 dark:text-slate-400">
+                    {dueSoonLoading ? 'Carregando...' : `${dueSoonRomaneios.length} romaneio(s) vencem em até 3 dias.`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void sendDueSoonReminders()}
+                  className="px-4 py-2 rounded-xl bg-yellow-500 hover:bg-yellow-600 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[10px] font-black uppercase tracking-widest"
+                  disabled={dueSoonLoading || dueSoonEmailSending || dueSoonRomaneios.length === 0}
+                >
+                  {dueSoonEmailSending ? 'Enviando...' : 'Enviar lembretes'}
+                </button>
+                <button
+                  onClick={() => setShowDueSoonModal(false)}
+                  className="p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-400"
+                  disabled={dueSoonLoading || dueSoonEmailSending}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 overflow-auto max-h-[calc(85vh-88px)]">
+              {dueSoonLoading ? (
+                <div className="text-sm font-bold text-gray-500 dark:text-slate-400">Carregando...</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px]">
+                    <thead>
+                      <tr className="text-left text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest border-b border-gray-50 dark:border-slate-800">
+                        <th className="py-4 pr-6">Nº</th>
+                        <th className="py-4 pr-6">Cliente</th>
+                        <th className="py-4 pr-6">Vencimento</th>
+                        <th className="py-4 pr-6">Faltam</th>
+                        <th className="py-4 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dueSoonRomaneios.map((r) => {
+                        const due = String((r as any).dueDate || '');
+                        const days = daysUntilDue(due);
+                        const total = computeRomaneioTotal(r);
+                        return (
+                          <tr key={String(r.id)} className="border-b border-gray-50 dark:border-slate-800 text-sm">
+                            <td className="py-4 pr-6 font-black text-gray-900 dark:text-white">{String(r.number || '')}</td>
+                            <td className="py-4 pr-6 text-gray-700 dark:text-slate-300">{String(r.client?.name || r.customer?.name || '')}</td>
+                            <td className="py-4 pr-6 text-gray-600 dark:text-slate-400">{due ? formatDate(due) : '-'}</td>
+                            <td className="py-4 pr-6 text-gray-600 dark:text-slate-400">{days === null ? '-' : `${days} dia(s)`}</td>
+                            <td className="py-4 text-right font-black text-gray-900 dark:text-white">{formatCurrency(total)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Sidebar */}

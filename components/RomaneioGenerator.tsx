@@ -13,14 +13,15 @@ import { getCustomers } from '../api/customers';
 import { getProducts } from '../api/products';
 import { getExpenses } from '../api/expenses';
 import { getObservations } from '../api/observations';
-import { addRomaneio } from '../api/romaneios';
+import { addRomaneio, sendRomaneioEmailNotification } from '../api/romaneios';
 
 interface Props {
   onSave: (data: RomaneioData) => void;
   initialData?: RomaneioData | null;
+  onCreateNew?: () => void;
 }
 
-const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
+const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }) => {
   const [view, setView] = useState<'edit' | 'preview'>('edit');
   
   // Data fetched from API
@@ -328,6 +329,17 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
     const controller = new AbortController();
     try {
       const savedRomaneio = await addRomaneio(finalData, controller.signal);
+      try {
+        if (savedRomaneio?.id && !initialData) {
+          await sendRomaneioEmailNotification({ romaneioId: String(savedRomaneio.id), type: 'ROMANEIO_CRIADO' }, controller.signal);
+        }
+      } catch (e) {
+        console.error('Falha ao enviar e-mail (Romaneio criado):', e);
+      }
+      if (!initialData) {
+        setRomaneio(normalizeRomaneio(null));
+        setView('edit');
+      }
       onSave(savedRomaneio as RomaneioData);
     } catch (error: any) {
       if (error.name !== 'AbortError') {
@@ -386,6 +398,18 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData }) => {
         </div>
         
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setRomaneio(normalizeRomaneio(null));
+              setView('edit');
+              setIsExpenseManagerOpen(false);
+              setIsObservationManagerOpen(false);
+              onCreateNew?.();
+            }}
+            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-bold shadow-lg shadow-blue-100 dark:shadow-none"
+          >
+            <Plus size={18} /> Criar Romaneio
+          </button>
           {view === 'edit' ? (
             <button 
               onClick={() => setView('preview')}

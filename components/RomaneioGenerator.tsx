@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { CatalogProduct, CompanyInfo, Customer, Product, RomaneioData, Expense, ExpenseStock, RomaneioStatus, Observation } from '../types';
 import { DEFAULT_ROMANEIO } from '../constants';
-import { FileDown, ChevronLeft, Edit3, Building2, Users, Package, Plus, DollarSign, Save, CheckCircle, X } from 'lucide-react';
+import { FileDown, ChevronLeft, Edit3, Building2, Users, Package, Plus, DollarSign, Save, CheckCircle, X, AlertTriangle } from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils';
 import RomaneioForm from './RomaneioForm';
 import RomaneioPreview from './RomaneioPreview';
@@ -61,6 +61,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
   const [isObservationManagerOpen, setIsObservationManagerOpen] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [isSaveSuccessOpen, setIsSaveSuccessOpen] = useState(false);
+  const [isSelectBeforeSaveOpen, setIsSelectBeforeSaveOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -334,7 +335,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
       return;
     }
     if (!romaneio.company?.id || !romaneio.customer?.id) {
-      alert('Selecione uma empresa e um cliente antes de salvar.');
+      setIsSelectBeforeSaveOpen(true);
       return;
     }
 
@@ -622,6 +623,44 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
                 type="button"
                 onClick={() => setIsSaveSuccessOpen(false)}
                 className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all font-bold shadow-lg shadow-green-100 dark:shadow-none"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSelectBeforeSaveOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[95] p-4 flex items-center justify-center"
+          onClick={() => setIsSelectBeforeSaveOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-[32px] w-full max-w-md shadow-2xl transition-colors p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded-xl text-yellow-700 dark:text-yellow-400">
+                <AlertTriangle size={20} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-widest">Atenção</h3>
+                <p className="text-sm text-gray-600 dark:text-slate-300 mt-1">Selecione uma empresa e um cliente antes de salvar.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSelectBeforeSaveOpen(false)}
+                className="p-2 rounded-xl text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsSelectBeforeSaveOpen(false)}
+                className="flex items-center gap-2 px-6 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl transition-all font-bold shadow-lg shadow-yellow-100 dark:shadow-none"
               >
                 OK
               </button>

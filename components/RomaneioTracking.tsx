@@ -53,6 +53,36 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     return s === 'CONCLUÍDO' || s === 'CONCLUIDO';
   };
 
+  const toOptionalInt = (v: unknown) => {
+    const s = String(v ?? '').trim();
+    if (!s) return null;
+    if (!/^\d+$/.test(s)) return null;
+    const n = Number(s);
+    if (!Number.isFinite(n)) return null;
+    return n;
+  };
+
+  const sortByNewestId = (rows: RomaneioData[]) => {
+    return [...rows].sort((a, b) => {
+      const aId = toOptionalInt((a as any)?.id);
+      const bId = toOptionalInt((b as any)?.id);
+      if (aId !== null && bId !== null) return bId - aId;
+      if (aId !== null) return -1;
+      if (bId !== null) return 1;
+
+      const aCreated = String((a as any)?.created_at ?? (a as any)?.criado_em ?? '');
+      const bCreated = String((b as any)?.created_at ?? (b as any)?.criado_em ?? '');
+      if (aCreated && bCreated && aCreated !== bCreated) return bCreated.localeCompare(aCreated);
+
+      const aNum = toOptionalInt((a as any)?.number ?? (a as any)?.numero ?? (a as any)?.guia);
+      const bNum = toOptionalInt((b as any)?.number ?? (b as any)?.numero ?? (b as any)?.guia);
+      if (aNum !== null && bNum !== null) return bNum - aNum;
+      if (aNum !== null) return -1;
+      if (bNum !== null) return 1;
+      return 0;
+    });
+  };
+
   useEffect(() => {
     const controller = new AbortController();
     fetchRomaneios(controller.signal);
@@ -66,7 +96,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     try {
       setLoading(true);
       const data = await getRomaneios(signal);
-      setHistory(data);
+      setHistory(sortByNewestId(Array.isArray(data) ? data : []));
     } catch (error: any) {
       if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
         console.error('Error fetching romaneios:', error);

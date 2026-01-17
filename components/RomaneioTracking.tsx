@@ -46,6 +46,11 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     documentInfo: true
   });
 
+  const isConcluido = (status: unknown) => {
+    const s = String(status ?? '').trim().toUpperCase();
+    return s === 'CONCLUÍDO' || s === 'CONCLUIDO';
+  };
+
   useEffect(() => {
     const controller = new AbortController();
     fetchRomaneios(controller.signal);
@@ -264,14 +269,20 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
                       <span className="text-sm font-black text-gray-800 dark:text-white">{formatCurrency(total)}</span>
                     </td>
                     <td className="px-6 py-5">
-                      <div className="relative group/status cursor-pointer">
-                        {getStatusBadge(r.status)}
-                        <div className="absolute top-full left-0 mt-2 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl shadow-2xl opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible transition-all z-20 p-2 min-w-[150px]">
-                          <button onClick={() => r.id && updateStatus(r.id, 'PENDENTE')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 rounded-lg">Pendente</button>
-                          <button onClick={() => r.id && updateStatus(r.id, 'CONCLUÍDO')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg">Concluído</button>
-                          <button onClick={() => r.id && updateStatus(r.id, 'CANCELADO')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg">Cancelar</button>
+                      {isConcluido(r.status) ? (
+                        <div>
+                          {getStatusBadge(r.status)}
                         </div>
-                      </div>
+                      ) : (
+                        <div className="relative group/status cursor-pointer">
+                          {getStatusBadge(r.status)}
+                          <div className="absolute top-full left-0 mt-2 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl shadow-2xl opacity-0 invisible group-hover/status:opacity-100 group-hover/status:visible transition-all z-20 p-2 min-w-[150px]">
+                            <button onClick={() => r.id && updateStatus(r.id, 'PENDENTE')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 rounded-lg">Pendente</button>
+                            <button onClick={() => r.id && updateStatus(r.id, 'CONCLUÍDO')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg">Concluído</button>
+                            <button onClick={() => r.id && updateStatus(r.id, 'CANCELADO')} className="w-full text-left px-4 py-2 text-[10px] font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg">Cancelar</button>
+                          </div>
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-5 text-right">
                       <div className="flex items-center justify-end gap-1">

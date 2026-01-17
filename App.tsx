@@ -46,6 +46,8 @@ const App: React.FC = () => {
   const [showDueSoonModal, setShowDueSoonModal] = useState(false);
   const [dueSoonLoading, setDueSoonLoading] = useState(false);
   const [dueSoonEmailSending, setDueSoonEmailSending] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('bb_theme');
     return saved === 'dark';
@@ -183,21 +185,27 @@ const App: React.FC = () => {
     return Math.floor((t - todayMidnight) / (24 * 60 * 60 * 1000));
   };
 
-  const handleLogout = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (window.confirm('Deseja realmente sair do sistema?')) {
-      try {
-        await supabase.auth.signOut({ scope: 'local' } as any);
-      } catch {
-      } finally {
-        setIsAuthenticated(false);
-        setForcePasswordReset(false);
-        setSelectedRomaneio(null);
-        setIsSidebarOpen(false);
-        setShowDueSoonModal(false);
-        setDueSoonRomaneios([]);
-      }
+  const doLogout = async () => {
+    if (logoutLoading) return;
+    setLogoutLoading(true);
+    try {
+      await supabase.auth.signOut({ scope: 'local' } as any);
+    } catch {
+    } finally {
+      setIsAuthenticated(false);
+      setForcePasswordReset(false);
+      setSelectedRomaneio(null);
+      setIsSidebarOpen(false);
+      setShowDueSoonModal(false);
+      setDueSoonRomaneios([]);
+      setShowLogoutModal(false);
+      setLogoutLoading(false);
     }
+  };
+
+  const handleLogout = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowLogoutModal(true);
   };
 
   const sendDueSoonReminders = async () => {
@@ -385,6 +393,62 @@ const App: React.FC = () => {
                   </table>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-sm p-4 flex items-center justify-center">
+          <div className="bg-white dark:bg-slate-900 rounded-[28px] w-full max-w-md overflow-hidden shadow-2xl border border-gray-100 dark:border-slate-800">
+            <div className="p-6 border-b border-gray-50 dark:border-slate-800 flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded-2xl text-red-700 dark:text-red-400">
+                  <AlertTriangle size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base md:text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">
+                    Deseja realmente sair do sistema?
+                  </h3>
+                  <p className="text-[11px] font-bold text-gray-500 dark:text-slate-400">
+                    Você precisará informar suas credenciais novamente.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                className="p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-400"
+                disabled={logoutLoading}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                disabled={logoutLoading}
+                className="px-4 py-3 rounded-2xl bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-slate-200 text-[10px] font-black uppercase tracking-widest hover:bg-gray-100 dark:hover:bg-slate-700 transition-all disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => void doLogout()}
+                disabled={logoutLoading}
+                className="px-4 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {logoutLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Saindo...
+                  </>
+                ) : (
+                  <>
+                    <LogOut size={16} />
+                    Sair
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

@@ -32,6 +32,18 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
   const [observations, setObservations] = useState<Observation[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const isConcluido = (status: unknown) => {
+    const s = String(status ?? '').trim().toUpperCase();
+    return s === 'CONCLUÍDO' || s === 'CONCLUIDO';
+  };
+
+  const isReadOnly = useMemo(() => {
+    if (!initialData) return false;
+    return isConcluido((initialData as any)?.status);
+  }, [initialData]);
+
+  const effectiveView = isReadOnly ? 'preview' : view;
+
   const normalizeRomaneio = (input?: RomaneioData | null): RomaneioData => {
     const base: RomaneioData = { ...DEFAULT_ROMANEIO };
     if (!input) return base;
@@ -89,6 +101,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
   useEffect(() => {
     if (initialData) {
       setRomaneio(normalizeRomaneio(initialData));
+      setView(isConcluido((initialData as any)?.status) ? 'preview' : 'edit');
     }
   }, [initialData]);
 
@@ -314,6 +327,10 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
   };
 
   const processSave = async (forcedStatus?: RomaneioStatus) => {
+    if (initialData && isConcluido((initialData as any)?.status)) {
+      alert('Este romaneio está CONCLUÍDO e não pode ser editado. Use CLONAR no Histórico para criar um novo.');
+      return;
+    }
     if (!romaneio.company?.id || !romaneio.customer?.id) {
       alert('Selecione uma empresa e um cliente antes de salvar.');
       return;
@@ -410,21 +427,22 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
           >
             <Plus size={18} /> Criar Romaneio
           </button>
-          {view === 'edit' ? (
-            <button 
-              onClick={() => setView('preview')}
-              className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all font-bold shadow-lg shadow-green-100 dark:shadow-none"
-            >
-              <Edit3 size={18} /> Visualizar
-            </button>
-          ) : (
-            <button 
-              onClick={() => setView('edit')}
-              className="flex items-center gap-2 px-6 py-2.5 bg-gray-600 dark:bg-slate-700 text-white rounded-xl hover:bg-gray-700 dark:hover:bg-slate-600 transition-all font-bold"
-            >
-              <ChevronLeft size={18} /> Voltar para Edição
-            </button>
-          )}
+          {!isReadOnly &&
+            (view === 'edit' ? (
+              <button 
+                onClick={() => setView('preview')}
+                className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all font-bold shadow-lg shadow-green-100 dark:shadow-none"
+              >
+                <Edit3 size={18} /> Visualizar
+              </button>
+            ) : (
+              <button 
+                onClick={() => setView('edit')}
+                className="flex items-center gap-2 px-6 py-2.5 bg-gray-600 dark:bg-slate-700 text-white rounded-xl hover:bg-gray-700 dark:hover:bg-slate-600 transition-all font-bold"
+              >
+                <ChevronLeft size={18} /> Voltar para Edição
+              </button>
+            ))}
           <button 
             onClick={() => {
               void exportPdf();
@@ -433,17 +451,19 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
           >
             <FileDown size={18} /> Baixar PDF
           </button>
-          <button 
-            onClick={() => processSave('PENDENTE')}
-            className="flex items-center gap-2 px-6 py-2.5 bg-gray-800 dark:bg-slate-950 text-white rounded-xl hover:bg-black transition-all font-bold shadow-lg shadow-gray-200 dark:shadow-none"
-          >
-            <Save size={18} /> Salvar como Pendente
-          </button>
+          {!isReadOnly && (
+            <button 
+              onClick={() => processSave('PENDENTE')}
+              className="flex items-center gap-2 px-6 py-2.5 bg-gray-800 dark:bg-slate-950 text-white rounded-xl hover:bg-black transition-all font-bold shadow-lg shadow-gray-200 dark:shadow-none"
+            >
+              <Save size={18} /> Salvar como Pendente
+            </button>
+          )}
         </div>
       </div>
 
       <div className="p-8 max-w-6xl mx-auto w-full space-y-6">
-        {view === 'edit' ? (
+        {effectiveView === 'edit' ? (
           <RomaneioForm 
             data={romaneio}
             setData={setRomaneio}
@@ -531,7 +551,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
         </div>
       )}
 
-      {view === 'edit' && (
+      {effectiveView === 'edit' && (
         <div className="no-print fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-gray-100 dark:border-slate-800 p-4 shadow-2xl z-50 transition-colors">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
             <div className="flex gap-8 items-center">

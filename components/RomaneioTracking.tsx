@@ -38,6 +38,8 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
   const [statusFilter, setStatusFilter] = useState<RomaneioStatus | 'TODOS'>('TODOS');
   
   const [cloneTarget, setCloneTarget] = useState<RomaneioData | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RomaneioData | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [cloneOptions, setCloneOptions] = useState({
     client: true,
     products: true,
@@ -83,14 +85,17 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     }
   };
 
-  const deleteRomaneio = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja deletar este romaneio?')) {
-      try {
-        await deleteRomaneioAPI(id);
-        fetchRomaneios(); // Re-fetch to get the latest data
-      } catch (error) {
-        console.error('Error deleting romaneio:', error);
-      }
+  const confirmDeleteRomaneio = async () => {
+    if (!deleteTarget?.id || deleteLoading) return;
+    setDeleteLoading(true);
+    try {
+      await deleteRomaneioAPI(deleteTarget.id);
+      fetchRomaneios();
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error('Error deleting romaneio:', error);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -288,7 +293,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => setCloneTarget(r)} className="p-2.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-all"><Copy size={18} /></button>
                         <button onClick={() => onView(r)} className="p-2.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-xl transition-all"><Printer size={18} /></button>
-                        <button onClick={() => r.id && deleteRomaneio(r.id)} className="p-2.5 text-gray-300 dark:text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all"><Trash2 size={18} /></button>
+                        <button onClick={() => setDeleteTarget(r)} className="p-2.5 text-gray-300 dark:text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all"><Trash2 size={18} /></button>
                       </div>
                     </td>
                   </tr>
@@ -345,6 +350,76 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
             <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 gap-4 shrink-0">
               <button onClick={() => setCloneTarget(null)} className="py-4 rounded-2xl text-gray-400 dark:text-slate-500 font-black uppercase tracking-widest text-[10px]">Cancelar</button>
               <button onClick={executeClone} className="py-4 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest shadow-xl shadow-blue-100 dark:shadow-none text-[10px]">Criar Clone</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-end md:items-center justify-center z-[110] p-0 md:p-4 animate-in fade-in slide-in-from-bottom duration-300">
+          <div className="bg-white dark:bg-slate-900 rounded-t-[40px] md:rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 md:p-8 border-b border-gray-100 dark:border-slate-800 bg-red-50/50 dark:bg-red-900/20 shrink-0">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-red-600 p-2 rounded-xl text-white shadow-lg shadow-red-100 dark:shadow-none"><Trash2 size={20} /></div>
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleteLoading}
+                  className="p-2 hover:bg-red-100/50 dark:hover:bg-slate-800 rounded-xl text-red-600 dark:text-red-400 transition-all disabled:opacity-60"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              <h3 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">Excluir Romaneio</h3>
+              <p className="text-[10px] text-red-600 dark:text-red-400 font-black uppercase mt-2 tracking-widest">Ação Irreversível</p>
+            </div>
+
+            <div className="p-6 md:p-8 space-y-4 overflow-y-auto">
+              <div className="bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800 rounded-3xl p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-gray-900 dark:text-white uppercase truncate">
+                      Romaneio #{String(deleteTarget.number || (deleteTarget as any)?.guia || (deleteTarget as any)?.numero || '')}
+                    </p>
+                    <p className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase truncate mt-1">
+                      {String(deleteTarget.client?.name || deleteTarget.customer?.name || '')}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest shrink-0">
+                    {formatDate(deleteTarget.saleDate || deleteTarget.emissionDate || (deleteTarget as any)?.data_de_emissao)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 rounded-2xl bg-yellow-50/60 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-900/30">
+                <div className="text-yellow-700 dark:text-yellow-300 pt-0.5"><Info size={18} /></div>
+                <div className="text-[11px] font-bold text-yellow-800 dark:text-yellow-200">
+                  Tem certeza que deseja deletar este romaneio?
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 gap-4 shrink-0">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteLoading}
+                className="py-4 rounded-2xl text-gray-400 dark:text-slate-500 font-black uppercase tracking-widest text-[10px] disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteRomaneio}
+                disabled={deleteLoading}
+                className="py-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest shadow-xl shadow-red-100 dark:shadow-none text-[10px] disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {deleteLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Excluindo...
+                  </>
+                ) : (
+                  'Deletar'
+                )}
+              </button>
             </div>
           </div>
         </div>

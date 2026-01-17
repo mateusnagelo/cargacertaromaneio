@@ -203,7 +203,6 @@ export const addRomaneio = async (
   const baseObs = (romaneio as any)?.observation ?? null;
 
   const candidatePtNoAccent: any = {
-    owner_id: userId,
     guia: baseNumber,
     numero: baseNumber,
     data_de_emissao: baseDate,
@@ -216,7 +215,6 @@ export const addRomaneio = async (
   };
 
   const candidatePtAccent: any = {
-    owner_id: userId,
     guia: baseNumber,
     numero: baseNumber,
     data_de_emissao: baseDate,
@@ -229,7 +227,6 @@ export const addRomaneio = async (
   };
 
   const candidateEn: any = {
-    owner_id: userId,
     number: baseNumber,
     status: statusNorm || 'PENDENTE',
     company_id: baseCompanyId,
@@ -375,6 +372,16 @@ export const updateRomaneio = async (
     return Number.isFinite(n) ? n : null;
   };
 
+  const isUuid = (v: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+
+  const toOptionalUuidString = (v: unknown) => {
+    if (v === null || v === undefined) return null;
+    const s = String(v).trim();
+    if (!s) return null;
+    return isUuid(s) ? s : null;
+  };
+
   const statusRaw = (romaneio as any)?.status ?? 'PENDENTE';
   const statusNorm = String(statusRaw).trim().toUpperCase();
   const statusPt =
@@ -393,6 +400,17 @@ export const updateRomaneio = async (
 
   const fullPayload = { ...(romaneio as any), id: String(id) };
 
+  const candidateDbNumeric: any = {
+    owner_id: userId,
+    status: statusPt,
+    company_id: toOptionalNumber(baseCompanyId),
+    customer_id: toOptionalNumber(baseCustomerId),
+    issue_date: baseDate,
+    total_amount: Number.isFinite(totalFromItems) ? totalFromItems : null,
+    observations: baseObs,
+    banking: baseBanking,
+  };
+
   const candidatePtNoAccent: any = {
     owner_id: userId,
     guia: baseNumber,
@@ -405,7 +423,6 @@ export const updateRomaneio = async (
     montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
     peso_total: Number.isFinite(weightFromItems) ? weightFromItems : null,
     banking: baseBanking,
-    payload: fullPayload,
   };
 
   const candidatePtAccent: any = {
@@ -420,19 +437,17 @@ export const updateRomaneio = async (
     montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
     peso_total: Number.isFinite(weightFromItems) ? weightFromItems : null,
     banking: baseBanking,
-    payload: fullPayload,
   };
 
   const candidateEn: any = {
     owner_id: userId,
     number: baseNumber,
     status: statusNorm || 'PENDENTE',
-    company_id: baseCompanyId,
-    customer_id: baseCustomerId,
+    company_id: toOptionalUuidString(baseCompanyId),
+    customer_id: toOptionalUuidString(baseCustomerId),
     total_value: Number.isFinite(totalFromItems) ? totalFromItems : null,
     total_weight: Number.isFinite(weightFromItems) ? weightFromItems : null,
     banking: baseBanking,
-    payload: fullPayload,
   };
 
   const compactPayload = (input: any) => {
@@ -458,6 +473,10 @@ export const updateRomaneio = async (
       delete fromPayload.status;
       Object.assign(merged, fromPayload);
     }
+
+    if (merged.issue_date && !merged.emissionDate) merged.emissionDate = merged.issue_date;
+    if (merged.total_amount != null && merged.total_value == null) merged.total_value = merged.total_amount;
+    if (merged.observations && !merged.observation) merged.observation = merged.observations;
 
     if (merged.guia != null && merged.number == null) merged.number = String(merged.guia);
     if (merged.numero != null && merged.number == null) merged.number = String(merged.numero);
@@ -495,41 +514,114 @@ export const updateRomaneio = async (
     return merged as RomaneioData;
   };
 
-  const candidates = [candidatePtNoAccent, candidatePtAccent, candidateEn];
+  const candidates = [candidateDbNumeric, candidateEn, candidatePtNoAccent, candidatePtAccent];
   let lastError: any = null;
 
+  const pushUniqueFilter = (
+    list: Array<{ col: string; value: any }>,
+    col: string,
+    value: any
+  ) => {
+    if (value === undefined) return;
+    const key = `${col}:${typeof value === 'string' ? value : JSON.stringify(value)}`;
+    if ((list as any)._keys?.has(key)) return;
+    if (!(list as any)._keys) (list as any)._keys = new Set<string>();
+    (list as any)._keys.add(key);
+    list.push({ col, value });
+  };
+
+  const filters: Array<{ col: string; value: any }> = [];
+  const idStr = String(id);
+  const idLooksUuid = isUuid(idStr);
+  if (idLooksUuid) pushUniqueFilter(filters, 'id', idStr);
+
+  const idAsNumber = toOptionalNumber(id);
+  if (idAsNumber !== null) pushUniqueFilter(filters, 'id', idAsNumber);
+  if (!isUuid(String(id)) || idAsNumber !== null) {
+    pushUniqueFilter(filters, 'guia', idAsNumber ?? String(id));
+    pushUniqueFilter(filters, 'numero', idAsNumber ?? String(id));
+    pushUniqueFilter(filters, 'number', idAsNumber ?? String(id));
+  }
+
+  if (baseNumber !== null) {
+    pushUniqueFilter(filters, 'guia', baseNumber);
+    pushUniqueFilter(filters, 'numero', baseNumber);
+    pushUniqueFilter(filters, 'number', baseNumber);
+  }
+
   const tryUpdate = async (payload: any) => {
-    const query = supabase
-      .from('romaneios')
-      .update(payload, { count: 'exact' })
-      .eq('id', id)
-      .select('*');
-    return (await applyAbortSignal(query, signal)) as any;
+    let lastRes: any = null;
+    for (const f of filters) {
+      const query = (supabase as any)
+        .from('romaneios')
+        .update(payload, { count: 'exact' })
+        .eq(f.col as any, f.value)
+        .select('*');
+      const res: any = await applyAbortSignal(query, signal);
+      lastRes = res;
+
+      if (!res?.error && res?.count) return res;
+      if (!res?.error && !res?.count) continue;
+
+      const code = String((res?.error as any)?.code || '');
+      const msg = String(res?.error?.message || res?.error || '');
+      if (
+        f.col === 'id' &&
+        !idLooksUuid &&
+        msg.toLowerCase().includes('invalid input syntax') &&
+        msg.toLowerCase().includes('uuid')
+      ) {
+        continue;
+      }
+      if (msg.includes("Could not find the '") && msg.includes("' column")) {
+        const m = msg.match(/Could not find the '([^']+)' column/i);
+        if (m?.[1] && m[1] === f.col) continue;
+      }
+      if (
+        code === '42703' ||
+        (msg.toLowerCase().includes('does not exist') &&
+          (msg.includes(`romaneios.${f.col}`) ||
+            msg.includes(`romaneios."${f.col}"`) ||
+            msg.includes(`"${f.col}"`) ||
+            msg.includes(`'${f.col}'`)))
+      ) {
+        continue;
+      }
+      break;
+    }
+    return lastRes;
   };
 
   for (const candidate of candidates) {
     const payload: any = compactPayload(candidate);
-    let shouldClearBackup = 'payload' in payload;
+    let shouldClearBackup = false;
 
     for (let attempt = 0; attempt < 50; attempt++) {
       if (Object.keys(payload).length === 0) break;
       const res: any = await tryUpdate(payload);
       if (!res?.error) {
         if (!res?.count) {
-          throw new Error('Romaneio não foi atualizado no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+          lastError = new Error('Romaneio não foi atualizado no banco (0 linhas afetadas).');
+          break;
         }
-        if (shouldClearBackup) deleteJson(backupKey);
         const row = Array.isArray(res?.data) ? res.data[0] : res?.data;
+        const hasPayloadColumn = !!row && Object.prototype.hasOwnProperty.call(row, 'payload');
+        if (hasPayloadColumn) {
+          const payloadRes: any = await tryUpdate({ payload: fullPayload });
+          if (!payloadRes?.error && payloadRes?.count) {
+            shouldClearBackup = true;
+            const payloadRow = Array.isArray(payloadRes?.data) ? payloadRes.data[0] : payloadRes?.data;
+            if (shouldClearBackup) deleteJson(backupKey);
+            return normalizeRow(payloadRow);
+          }
+        }
+
+        if (shouldClearBackup) deleteJson(backupKey);
         return normalizeRow(row);
       }
 
       lastError = res.error;
       const msg = String(res.error.message || res.error);
-
-      if (msg.includes('schema cache')) {
-        await new Promise<void>((r) => setTimeout(() => r(), 800));
-        continue;
-      }
 
       const match =
         msg.match(/Could not find the '([^']+)' column/) ||
@@ -538,10 +630,18 @@ export const updateRomaneio = async (
       if (match?.[1]) {
         const missingColumn = match[1];
         if (missingColumn in payload) {
-          if (missingColumn === 'payload') shouldClearBackup = false;
+          if (attempt < 6 && msg.includes('schema cache')) {
+            await new Promise<void>((r) => setTimeout(() => r(), 800));
+            continue;
+          }
           delete payload[missingColumn];
           continue;
         }
+      }
+
+      if (msg.includes('schema cache')) {
+        await new Promise<void>((r) => setTimeout(() => r(), 800));
+        continue;
       }
 
       if (
@@ -559,58 +659,122 @@ export const updateRomaneio = async (
         continue;
       }
 
+      if (msg.toLowerCase().includes('invalid input syntax') && msg.toLowerCase().includes('uuid')) {
+        let changed = false;
+        for (const k of ['company_id', 'customer_id', 'owner_id']) {
+          if (k in payload) {
+            const v = String(payload[k] ?? '').trim();
+            if (!v || !isUuid(v)) {
+              delete payload[k];
+              changed = true;
+            }
+          }
+        }
+        if (changed) continue;
+      }
+
       break;
     }
-  }
-
-  const payloadOnly: any = { payload: fullPayload };
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const res: any = await tryUpdate(payloadOnly);
-    if (!res?.error) {
-      if (!res?.count) {
-        throw new Error('Romaneio não foi atualizado no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
-      }
-      deleteJson(backupKey);
-      const row = Array.isArray(res?.data) ? res.data[0] : res?.data;
-      return normalizeRow(row);
-    }
-    lastError = res.error;
-    const msg = String(res.error.message || res.error);
-    if (msg.includes('schema cache')) {
-      await new Promise<void>((r) => setTimeout(() => r(), 800));
-      continue;
-    }
-    const match =
-      msg.match(/Could not find the '([^']+)' column/) ||
-      msg.match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
-      msg.match(/column "([^"]+)" does not exist/i);
-    if (match?.[1]) {
-      const missingColumn = match[1];
-      if (missingColumn === 'payload') break;
-    }
-    break;
   }
 
   throwQueryError(lastError);
 };
 
 export const deleteRomaneio = async (id: string, signal?: AbortSignal): Promise<void> => {
-  const query = supabase.from('romaneios').delete({ count: 'exact' }).eq('id', id);
-  const { error, count } = await applyAbortSignal(query, signal);
-  throwQueryError(error);
-  if (!count) {
-    throw new Error('Romaneio não foi excluído no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+  const isUuid = (v: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  const idStr = String(id);
+  const idLooksUuid = isUuid(idStr);
+  const idAsNumber = (() => {
+    const s = idStr.trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  })();
+
+  const filters: Array<{ col: string; value: any }> = [];
+  if (idLooksUuid) filters.push({ col: 'id', value: idStr });
+  if (idAsNumber !== null) filters.push({ col: 'id', value: idAsNumber });
+  filters.push({ col: 'guia', value: idAsNumber ?? idStr });
+  filters.push({ col: 'numero', value: idAsNumber ?? idStr });
+  filters.push({ col: 'number', value: idAsNumber ?? idStr });
+
+  let lastError: any = null;
+  for (const f of filters) {
+    const query = (supabase as any).from('romaneios').delete({ count: 'exact' }).eq(f.col, f.value);
+    const { error, count } = await applyAbortSignal(query, signal);
+    if (error) {
+      lastError = error;
+      const msg = String(error?.message || error);
+      if (f.col === 'id' && !idLooksUuid && msg.toLowerCase().includes('invalid input syntax') && msg.toLowerCase().includes('uuid')) {
+        continue;
+      }
+      if (
+        String((error as any)?.code || '') === '42703' ||
+        (msg.toLowerCase().includes('does not exist') &&
+          (msg.includes(`romaneios.${f.col}`) ||
+            msg.includes(`romaneios."${f.col}"`) ||
+            msg.includes(`"${f.col}"`) ||
+            msg.includes(`'${f.col}'`)))
+      ) {
+        continue;
+      }
+      continue;
+    }
+    if (count) {
+      deleteJson(getRomaneioBackupKey(idStr));
+      return;
+    }
   }
-  deleteJson(getRomaneioBackupKey(String(id)));
+
+  throwQueryError(lastError || new Error('Romaneio não foi excluído no banco (0 linhas afetadas).'));
 };
 
 export const updateRomaneioStatus = async (id: string, status: RomaneioStatus, signal?: AbortSignal): Promise<void> => {
-  const query = supabase.from('romaneios').update({ status }, { count: 'exact' }).eq('id', id);
-  const { error, count } = await applyAbortSignal(query, signal);
-  throwQueryError(error);
-  if (!count) {
-    throw new Error('Romaneio não foi atualizado no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+  const isUuid = (v: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  const idStr = String(id);
+  const idLooksUuid = isUuid(idStr);
+  const idAsNumber = (() => {
+    const s = idStr.trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  })();
+
+  const filters: Array<{ col: string; value: any }> = [];
+  if (idLooksUuid) filters.push({ col: 'id', value: idStr });
+  if (idAsNumber !== null) filters.push({ col: 'id', value: idAsNumber });
+  filters.push({ col: 'guia', value: idAsNumber ?? idStr });
+  filters.push({ col: 'numero', value: idAsNumber ?? idStr });
+  filters.push({ col: 'number', value: idAsNumber ?? idStr });
+
+  let lastError: any = null;
+  for (const f of filters) {
+    const query = (supabase as any).from('romaneios').update({ status }, { count: 'exact' }).eq(f.col, f.value);
+    const { error, count } = await applyAbortSignal(query, signal);
+    if (error) {
+      lastError = error;
+      const msg = String(error?.message || error);
+      if (f.col === 'id' && !idLooksUuid && msg.toLowerCase().includes('invalid input syntax') && msg.toLowerCase().includes('uuid')) {
+        continue;
+      }
+      if (
+        String((error as any)?.code || '') === '42703' ||
+        (msg.toLowerCase().includes('does not exist') &&
+          (msg.includes(`romaneios.${f.col}`) ||
+            msg.includes(`romaneios."${f.col}"`) ||
+            msg.includes(`"${f.col}"`) ||
+            msg.includes(`'${f.col}'`)))
+      ) {
+        continue;
+      }
+      continue;
+    }
+    if (count) return;
   }
+
+  throwQueryError(lastError || new Error('Romaneio não foi atualizado no banco (0 linhas afetadas).'));
 };
 
 export type RomaneioEmailNotificationType =

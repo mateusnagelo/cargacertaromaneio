@@ -60,6 +60,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
   const [isExpenseManagerOpen, setIsExpenseManagerOpen] = useState(false);
   const [isObservationManagerOpen, setIsObservationManagerOpen] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [isSaveSuccessOpen, setIsSaveSuccessOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -339,6 +340,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
 
     if (initialData?.id) {
       const controller = new AbortController();
+      setIsSaveSuccessOpen(false);
       setSaveLoading(true);
       try {
         const updated = await updateRomaneio(
@@ -353,7 +355,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
         );
         setRomaneio(normalizeRomaneio(updated));
         setView('preview');
-        alert('Alterações salvas com sucesso.');
+        setIsSaveSuccessOpen(true);
       } catch (error: any) {
         if (error.name !== 'AbortError') {
           console.error('Failed to update romaneio:', error);
@@ -585,6 +587,44 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
             </div>
             <div className="h-[calc(90vh-57px)] overflow-y-auto">
               <ObservationManager />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSaveSuccessOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[95] p-4 flex items-center justify-center"
+          onClick={() => setIsSaveSuccessOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-[32px] w-full max-w-md shadow-2xl transition-colors p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-xl text-green-700 dark:text-green-400">
+                <CheckCircle size={20} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-widest">Sucesso</h3>
+                <p className="text-sm text-gray-600 dark:text-slate-300 mt-1">Alterações salvas com sucesso.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSaveSuccessOpen(false)}
+                className="p-2 rounded-xl text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsSaveSuccessOpen(false)}
+                className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all font-bold shadow-lg shadow-green-100 dark:shadow-none"
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

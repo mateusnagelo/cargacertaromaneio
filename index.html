@@ -140,10 +140,16 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js').then(reg => {
-                    console.log('SW registrado com sucesso!');
-                }).catch(err => {
-                    console.log('Erro ao registrar SW:', err);
+                const host = String(location.hostname || '').toLowerCase()
+                const isLocal =
+                  host === 'localhost' ||
+                  host === '127.0.0.1' ||
+                  host === '0.0.0.0' ||
+                  host.endsWith('.local')
+                if (isLocal) return
+
+                navigator.serviceWorker.register('sw.js').then(() => {
+                }).catch(() => {
                 });
             });
         }

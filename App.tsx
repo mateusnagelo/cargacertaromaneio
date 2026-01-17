@@ -41,6 +41,7 @@ const App: React.FC = () => {
   const [forcePasswordReset, setForcePasswordReset] = useState(false);
   const [activeScreen, setActiveScreen] = useState<Screen>('tracking');
   const [selectedRomaneio, setSelectedRomaneio] = useState<RomaneioData | null>(null);
+  const [screenStack, setScreenStack] = useState<Screen[]>(['tracking']);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [dueSoonRomaneios, setDueSoonRomaneios] = useState<RomaneioData[]>([]);
   const [showDueSoonModal, setShowDueSoonModal] = useState(false);
@@ -62,6 +63,35 @@ const App: React.FC = () => {
       localStorage.setItem('bb_theme', 'light');
     }
   }, [isDarkMode]);
+
+  const navigateTo = (screen: Screen, options?: { reset?: boolean }) => {
+    if (options?.reset) {
+      setScreenStack([screen]);
+    } else {
+      setScreenStack((prev) => {
+        const next = [...prev, screen];
+        return next.length > 50 ? next.slice(-50) : next;
+      });
+    }
+    setActiveScreen(screen);
+  };
+
+  const goBack = () => {
+    setScreenStack((prev) => {
+      if (prev.length <= 1) {
+        setSelectedRomaneio(null);
+        setActiveScreen('tracking');
+        return ['tracking'];
+      }
+      const next = prev.slice(0, -1);
+      const previousScreen = next[next.length - 1] ?? 'tracking';
+      setActiveScreen(previousScreen);
+      if (previousScreen !== 'romaneios') {
+        setSelectedRomaneio(null);
+      }
+      return next.length ? next : ['tracking'];
+    });
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -126,7 +156,7 @@ const App: React.FC = () => {
             if (s !== 'PENDENTE') return false;
             const d = diffDays(String((r as any).dueDate || ''));
             if (d === null) return false;
-            return d >= 0 && d <= thresholdDays;
+            return d <= thresholdDays;
           })
           .sort((a, b) => {
             const da = diffDays(String((a as any).dueDate || '')) ?? 9999;
@@ -195,6 +225,8 @@ const App: React.FC = () => {
       setIsAuthenticated(false);
       setForcePasswordReset(false);
       setSelectedRomaneio(null);
+      setActiveScreen('tracking');
+      setScreenStack(['tracking']);
       setIsSidebarOpen(false);
       setShowDueSoonModal(false);
       setDueSoonRomaneios([]);
@@ -232,7 +264,7 @@ const App: React.FC = () => {
         return <RomaneioTracking 
                   onView={(romaneio) => {
                     setSelectedRomaneio(romaneio);
-                    setActiveScreen('romaneios');
+                    navigateTo('romaneios');
                   }}
                 />;
       case 'companies':
@@ -252,7 +284,7 @@ const App: React.FC = () => {
           <RomaneioGenerator
             onSave={() => {
               setSelectedRomaneio(null);
-              setActiveScreen('tracking');
+              navigateTo('tracking', { reset: true });
             }}
             onCreateNew={() => {
               setSelectedRomaneio(null);
@@ -378,14 +410,30 @@ const App: React.FC = () => {
                       {dueSoonRomaneios.map((r) => {
                         const due = String((r as any).dueDate || '');
                         const days = daysUntilDue(due);
+                        const isOverdue = days !== null && days < 0;
                         const total = computeRomaneioTotal(r);
                         return (
-                          <tr key={String(r.id)} className="border-b border-gray-50 dark:border-slate-800 text-sm">
-                            <td className="py-4 pr-6 font-black text-gray-900 dark:text-white">{String(r.number || '')}</td>
+                          <tr
+                            key={String(r.id)}
+                            className={`border-b border-gray-50 dark:border-slate-800 text-sm ${
+                              isOverdue ? 'bg-red-50/70 dark:bg-red-900/10' : ''
+                            }`}
+                          >
+                            <td className={`py-4 pr-6 font-black ${isOverdue ? 'text-red-700 dark:text-red-300' : 'text-gray-900 dark:text-white'}`}>{String(r.number || '')}</td>
                             <td className="py-4 pr-6 text-gray-700 dark:text-slate-300">{String(r.client?.name || r.customer?.name || '')}</td>
-                            <td className="py-4 pr-6 text-gray-600 dark:text-slate-400">{due ? formatDate(due) : '-'}</td>
-                            <td className="py-4 pr-6 text-gray-600 dark:text-slate-400">{days === null ? '-' : `${days} dia(s)`}</td>
-                            <td className="py-4 text-right font-black text-gray-900 dark:text-white">{formatCurrency(total)}</td>
+                            <td className={`py-4 pr-6 ${isOverdue ? 'text-red-700 dark:text-red-300 font-bold' : 'text-gray-600 dark:text-slate-400'}`}>{due ? formatDate(due) : '-'}</td>
+                            <td className="py-4 pr-6">
+                              {days === null ? (
+                                <span className="text-gray-600 dark:text-slate-400">-</span>
+                              ) : isOverdue ? (
+                                <span className="inline-flex items-center px-3 py-1 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-[10px] font-black uppercase tracking-widest">
+                                  Vencido
+                                </span>
+                              ) : (
+                                <span className="text-gray-600 dark:text-slate-400">{`${days} dia(s)`}</span>
+                              )}
+                            </td>
+                            <td className={`py-4 text-right font-black ${isOverdue ? 'text-red-700 dark:text-red-300' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(total)}</td>
                           </tr>
                         );
                       })}
@@ -488,7 +536,7 @@ const App: React.FC = () => {
               <button
                 key={item.id}
                 onClick={() => {
-                  setActiveScreen(item.id as Screen);
+                  navigateTo(item.id as Screen, item.id === 'tracking' ? { reset: true } : undefined);
                   setIsSidebarOpen(false);
                 }}
                 className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 group ${
@@ -533,6 +581,20 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto relative bg-gray-50 dark:bg-slate-950 transition-colors duration-300">
+        {screenStack.length > 1 && (
+          <div className="no-print sticky top-0 z-40 bg-gray-50/90 dark:bg-slate-950/90 backdrop-blur border-b border-gray-100 dark:border-slate-800">
+            <div className="p-4">
+              <button
+                type="button"
+                onClick={goBack}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-200 border border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800 transition-all text-[10px] font-black uppercase tracking-widest"
+              >
+                <ChevronLeft size={18} />
+                VOLTAR
+              </button>
+            </div>
+          </div>
+        )}
         {renderScreen()}
       </main>
       

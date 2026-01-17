@@ -346,6 +346,254 @@ export const addRomaneio = async (
   throwQueryError(lastError);
 };
 
+export const updateRomaneio = async (
+  id: string,
+  romaneio: Partial<Omit<RomaneioData, 'id' | 'created_at'>>,
+  signal?: AbortSignal
+): Promise<RomaneioData> => {
+  const backupKey = getRomaneioBackupKey(String(id));
+  writeJson(backupKey, { ...(romaneio as any), id: String(id) });
+
+  const { data: userRes, error: userError } = await supabase.auth.getUser();
+  throwQueryError(userError);
+  const userId = userRes?.user?.id;
+  if (!userId) throw new Error('Usuário não autenticado.');
+
+  const productsArr: any[] = Array.isArray((romaneio as any)?.products) ? ((romaneio as any).products as any[]) : [];
+  const expensesArr: any[] = Array.isArray((romaneio as any)?.expenses) ? ((romaneio as any).expenses as any[]) : [];
+  const totalFromItems =
+    productsArr.reduce((acc, p) => acc + (Number(p?.quantity || 0) * Number(p?.unitValue || 0)), 0) +
+    expensesArr.reduce((acc, e) => acc + (Number(e?.total || 0) || 0), 0);
+  const weightFromItems = productsArr.reduce((acc, p) => acc + (Number(p?.quantity || 0) * Number(p?.kg || 0)), 0);
+
+  const toOptionalNumber = (v: unknown) => {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    const s = String(v).trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const statusRaw = (romaneio as any)?.status ?? 'PENDENTE';
+  const statusNorm = String(statusRaw).trim().toUpperCase();
+  const statusPt =
+    statusNorm === 'CONCLUÍDO' || statusNorm === 'CONCLUIDO'
+      ? 'Concluído'
+      : statusNorm === 'CANCELADO'
+        ? 'Cancelado'
+        : 'Pendente';
+
+  const baseNumber = toOptionalNumber((romaneio as any)?.number);
+  const baseCompanyId = (romaneio as any)?.company_id ?? (romaneio as any)?.companyId ?? (romaneio as any)?.company?.id ?? null;
+  const baseCustomerId = (romaneio as any)?.customer_id ?? (romaneio as any)?.customerId ?? (romaneio as any)?.customer?.id ?? null;
+  const baseDate = (romaneio as any)?.emissionDate ?? (romaneio as any)?.saleDate ?? null;
+  const baseObs = (romaneio as any)?.observation ?? null;
+  const baseBanking = (romaneio as any)?.banking ?? (romaneio as any)?.company?.banking ?? null;
+
+  const fullPayload = { ...(romaneio as any), id: String(id) };
+
+  const candidatePtNoAccent: any = {
+    owner_id: userId,
+    guia: baseNumber,
+    numero: baseNumber,
+    data_de_emissao: baseDate,
+    status: statusPt,
+    id_da_empresa: toOptionalNumber(baseCompanyId),
+    id_do_cliente: toOptionalNumber(baseCustomerId),
+    observacoes: baseObs,
+    montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
+    peso_total: Number.isFinite(weightFromItems) ? weightFromItems : null,
+    banking: baseBanking,
+    payload: fullPayload,
+  };
+
+  const candidatePtAccent: any = {
+    owner_id: userId,
+    guia: baseNumber,
+    numero: baseNumber,
+    data_de_emissao: baseDate,
+    status: statusPt,
+    id_da_empresa: toOptionalNumber(baseCompanyId),
+    id_do_cliente: toOptionalNumber(baseCustomerId),
+    'observações': baseObs,
+    montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
+    peso_total: Number.isFinite(weightFromItems) ? weightFromItems : null,
+    banking: baseBanking,
+    payload: fullPayload,
+  };
+
+  const candidateEn: any = {
+    owner_id: userId,
+    number: baseNumber,
+    status: statusNorm || 'PENDENTE',
+    company_id: baseCompanyId,
+    customer_id: baseCustomerId,
+    total_value: Number.isFinite(totalFromItems) ? totalFromItems : null,
+    total_weight: Number.isFinite(weightFromItems) ? weightFromItems : null,
+    banking: baseBanking,
+    payload: fullPayload,
+  };
+
+  const compactPayload = (input: any) => {
+    const out: any = { ...input };
+    for (const k of Object.keys(out)) {
+      if (out[k] === undefined || out[k] === null || out[k] === '') delete out[k];
+    }
+    return out;
+  };
+
+  const normalizeRow = (row: any): RomaneioData => {
+    const merged: any = { ...row };
+    const payloadObj = merged?.payload && typeof merged.payload === 'object' ? merged.payload : null;
+    if (payloadObj) {
+      const fromPayload: any = { ...payloadObj };
+      delete fromPayload.id;
+      delete fromPayload.created_at;
+      delete fromPayload.company_id;
+      delete fromPayload.customer_id;
+      delete fromPayload.companyId;
+      delete fromPayload.customerId;
+      delete fromPayload.number;
+      delete fromPayload.status;
+      Object.assign(merged, fromPayload);
+    }
+
+    if (merged.guia != null && merged.number == null) merged.number = String(merged.guia);
+    if (merged.numero != null && merged.number == null) merged.number = String(merged.numero);
+    if (merged.data_de_emissao && !merged.emissionDate) merged.emissionDate = merged.data_de_emissao;
+    if (merged.criado_em && !merged.created_at) merged.created_at = merged.criado_em;
+    if (merged.id_da_empresa && !merged.company_id) merged.company_id = merged.id_da_empresa;
+    if (merged.id_do_cliente && !merged.customer_id) merged.customer_id = merged.id_do_cliente;
+    if (merged['observações'] && !merged.observation) merged.observation = merged['observações'];
+    if (merged.observacoes && !merged.observation) merged.observation = merged.observacoes;
+
+    if (merged.id != null) merged.id = String(merged.id);
+
+    if (typeof merged.status === 'string') {
+      const s = merged.status.trim().toUpperCase();
+      if (s.startsWith('PEND')) merged.status = 'PENDENTE';
+      else if (s.includes('SAIU') && s.includes('ENTREGA')) merged.status = 'PENDENTE';
+      else if (s.startsWith('ENTREG')) merged.status = 'CONCLUÍDO';
+      else if (s.replaceAll('Í', 'I').startsWith('CONCL')) merged.status = 'CONCLUÍDO';
+      else if (s.startsWith('CANC')) merged.status = 'CANCELADO';
+    }
+
+    if (!merged.client && merged.customer) merged.client = merged.customer;
+    if (!merged.customer && merged.client) merged.customer = merged.client;
+
+    if (Array.isArray(merged.items) && !Array.isArray(merged.products)) {
+      merged.products = merged.items;
+    }
+    if (Array.isArray(merged.romaneio_expenses) && !Array.isArray(merged.expenses)) {
+      merged.expenses = merged.romaneio_expenses;
+    }
+
+    if ((merged.number === undefined || merged.number === null || merged.number === '') && merged.id != null) {
+      merged.number = String(merged.id);
+    }
+    return merged as RomaneioData;
+  };
+
+  const candidates = [candidatePtNoAccent, candidatePtAccent, candidateEn];
+  let lastError: any = null;
+
+  const tryUpdate = async (payload: any) => {
+    const query = supabase
+      .from('romaneios')
+      .update(payload, { count: 'exact' })
+      .eq('id', id)
+      .select('*');
+    return (await applyAbortSignal(query, signal)) as any;
+  };
+
+  for (const candidate of candidates) {
+    const payload: any = compactPayload(candidate);
+    let shouldClearBackup = 'payload' in payload;
+
+    for (let attempt = 0; attempt < 50; attempt++) {
+      if (Object.keys(payload).length === 0) break;
+      const res: any = await tryUpdate(payload);
+      if (!res?.error) {
+        if (!res?.count) {
+          throw new Error('Romaneio não foi atualizado no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+        }
+        if (shouldClearBackup) deleteJson(backupKey);
+        const row = Array.isArray(res?.data) ? res.data[0] : res?.data;
+        return normalizeRow(row);
+      }
+
+      lastError = res.error;
+      const msg = String(res.error.message || res.error);
+
+      if (msg.includes('schema cache')) {
+        await new Promise<void>((r) => setTimeout(() => r(), 800));
+        continue;
+      }
+
+      const match =
+        msg.match(/Could not find the '([^']+)' column/) ||
+        msg.match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
+        msg.match(/column "([^"]+)" does not exist/i);
+      if (match?.[1]) {
+        const missingColumn = match[1];
+        if (missingColumn in payload) {
+          if (missingColumn === 'payload') shouldClearBackup = false;
+          delete payload[missingColumn];
+          continue;
+        }
+      }
+
+      if (
+        msg.toLowerCase().includes('invalid input syntax') &&
+        (msg.includes('bigint') || msg.includes('integer') || msg.includes('numeric'))
+      ) {
+        if ('id_da_empresa' in payload) payload.id_da_empresa = toOptionalNumber(payload.id_da_empresa);
+        if ('id_do_cliente' in payload) payload.id_do_cliente = toOptionalNumber(payload.id_do_cliente);
+        if ('guia' in payload) payload.guia = toOptionalNumber(payload.guia);
+        if ('numero' in payload) payload.numero = toOptionalNumber(payload.numero);
+        if ('montante_total' in payload) payload.montante_total = toOptionalNumber(payload.montante_total);
+        if ('peso_total' in payload) payload.peso_total = toOptionalNumber(payload.peso_total);
+        if ('total_value' in payload) payload.total_value = toOptionalNumber(payload.total_value);
+        if ('total_weight' in payload) payload.total_weight = toOptionalNumber(payload.total_weight);
+        continue;
+      }
+
+      break;
+    }
+  }
+
+  const payloadOnly: any = { payload: fullPayload };
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const res: any = await tryUpdate(payloadOnly);
+    if (!res?.error) {
+      if (!res?.count) {
+        throw new Error('Romaneio não foi atualizado no banco (0 linhas afetadas). Verifique RLS/policies no Supabase.');
+      }
+      deleteJson(backupKey);
+      const row = Array.isArray(res?.data) ? res.data[0] : res?.data;
+      return normalizeRow(row);
+    }
+    lastError = res.error;
+    const msg = String(res.error.message || res.error);
+    if (msg.includes('schema cache')) {
+      await new Promise<void>((r) => setTimeout(() => r(), 800));
+      continue;
+    }
+    const match =
+      msg.match(/Could not find the '([^']+)' column/) ||
+      msg.match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
+      msg.match(/column "([^"]+)" does not exist/i);
+    if (match?.[1]) {
+      const missingColumn = match[1];
+      if (missingColumn === 'payload') break;
+    }
+    break;
+  }
+
+  throwQueryError(lastError);
+};
+
 export const deleteRomaneio = async (id: string, signal?: AbortSignal): Promise<void> => {
   const query = supabase.from('romaneios').delete({ count: 'exact' }).eq('id', id);
   const { error, count } = await applyAbortSignal(query, signal);

@@ -13,7 +13,7 @@ import { getCustomers } from '../api/customers';
 import { getProducts } from '../api/products';
 import { getExpenses } from '../api/expenses';
 import { getObservations } from '../api/observations';
-import { addRomaneio, sendRomaneioEmailNotification } from '../api/romaneios';
+import { addRomaneio, sendRomaneioEmailNotification, updateRomaneio } from '../api/romaneios';
 
 interface Props {
   onSave: (data: RomaneioData) => void;
@@ -59,6 +59,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
   const [romaneio, setRomaneio] = useState<RomaneioData>(() => normalizeRomaneio(initialData || null));
   const [isExpenseManagerOpen, setIsExpenseManagerOpen] = useState(false);
   const [isObservationManagerOpen, setIsObservationManagerOpen] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -336,6 +337,35 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
       return;
     }
 
+    if (initialData?.id) {
+      const controller = new AbortController();
+      setSaveLoading(true);
+      try {
+        const updated = await updateRomaneio(
+          String(initialData.id),
+          {
+            ...romaneio,
+            status: forcedStatus || romaneio.status || initialData.status || 'PENDENTE',
+            company_id: romaneio.company.id,
+            customer_id: romaneio.customer.id,
+          } as any,
+          controller.signal
+        );
+        setRomaneio(normalizeRomaneio(updated));
+        setView('preview');
+        alert('Alterações salvas com sucesso.');
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          console.error('Failed to update romaneio:', error);
+          const message = error instanceof Error ? error.message : String(error);
+          alert(`Erro ao salvar alterações: ${message}`);
+        }
+      } finally {
+        setSaveLoading(false);
+      }
+      return;
+    }
+
     const finalData: Omit<RomaneioData, 'id' | 'created_at'> = {
       ...romaneio,
       status: forcedStatus || romaneio.status || 'PENDENTE',
@@ -451,7 +481,16 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
           >
             <FileDown size={18} /> Baixar PDF
           </button>
-          {!isReadOnly && (
+          {initialData && !isReadOnly && (
+            <button 
+              onClick={() => processSave()}
+              disabled={saveLoading}
+              className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-bold shadow-lg shadow-purple-100 dark:shadow-none disabled:opacity-60"
+            >
+              <Save size={18} /> {saveLoading ? 'Salvando...' : 'Salvar Alterações'}
+            </button>
+          )}
+          {!initialData && !isReadOnly && (
             <button 
               onClick={() => processSave('PENDENTE')}
               className="flex items-center gap-2 px-6 py-2.5 bg-gray-800 dark:bg-slate-950 text-white rounded-xl hover:bg-black transition-all font-bold shadow-lg shadow-gray-200 dark:shadow-none"
@@ -568,7 +607,8 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
             </div>
             <button 
               onClick={() => processSave('CONCLUÍDO')} 
-              className="bg-green-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-green-700 shadow-xl shadow-green-100 dark:shadow-none transition-all flex items-center gap-3"
+              disabled={saveLoading}
+              className="bg-green-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-green-700 shadow-xl shadow-green-100 dark:shadow-none transition-all flex items-center gap-3 disabled:opacity-60"
             >
               <CheckCircle size={20} /> Concluir Venda
             </button>

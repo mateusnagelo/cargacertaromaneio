@@ -19,4 +19,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Supabase env ausente: VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: {
+    headers: {
+      apikey: supabaseAnonKey,
+    },
+  },
+})

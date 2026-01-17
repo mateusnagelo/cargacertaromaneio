@@ -9,6 +9,8 @@ import { formatCurrency, formatDate } from '../utils';
 type DateField = 'saleDate' | 'emissionDate';
 
 type SortKey =
+  | 'id_desc'
+  | 'id_asc'
   | 'date_desc'
   | 'date_asc'
   | 'total_desc'
@@ -31,7 +33,7 @@ const Reports: React.FC = () => {
   const [minTotal, setMinTotal] = useState('');
   const [maxTotal, setMaxTotal] = useState('');
   const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('date_desc');
+  const [sortKey, setSortKey] = useState<SortKey>('id_desc');
 
   const reportRef = useRef<HTMLDivElement | null>(null);
 
@@ -74,6 +76,15 @@ const Reports: React.FC = () => {
   const getDateValue = (r: RomaneioData) => {
     const v = (r as any)?.[dateField] ?? (dateField === 'saleDate' ? (r as any)?.emissionDate : (r as any)?.saleDate);
     return typeof v === 'string' ? v : '';
+  };
+
+  const toOptionalInt = (v: unknown) => {
+    const s = String(v ?? '').trim();
+    if (!s) return null;
+    if (!/^\d+$/.test(s)) return null;
+    const n = Number(s);
+    if (!Number.isFinite(n)) return null;
+    return n;
   };
 
   const filtered = useMemo(() => {
@@ -126,8 +137,22 @@ const Reports: React.FC = () => {
         const bTotal = computeTotal(b);
         const aNum = String(a.number ?? '');
         const bNum = String(b.number ?? '');
+        const aId = toOptionalInt((a as any)?.id);
+        const bId = toOptionalInt((b as any)?.id);
 
         switch (sortKey) {
+          case 'id_asc': {
+            if (aId !== null && bId !== null) return aId - bId;
+            if (aId !== null) return -1;
+            if (bId !== null) return 1;
+            return 0;
+          }
+          case 'id_desc': {
+            if (aId !== null && bId !== null) return bId - aId;
+            if (aId !== null) return -1;
+            if (bId !== null) return 1;
+            return 0;
+          }
           case 'date_asc':
             return aDate.localeCompare(bDate);
           case 'date_desc':
@@ -169,7 +194,7 @@ const Reports: React.FC = () => {
     setMinTotal('');
     setMaxTotal('');
     setSearch('');
-    setSortKey('date_desc');
+    setSortKey('id_desc');
   };
 
   const exportPdf = async () => {
@@ -382,6 +407,8 @@ const Reports: React.FC = () => {
                 onChange={(e) => setSortKey(e.target.value as SortKey)}
                 className="w-full px-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm text-gray-900 dark:text-white"
               >
+                <option value="id_desc">ID (desc)</option>
+                <option value="id_asc">ID (asc)</option>
                 <option value="date_desc">Data (desc)</option>
                 <option value="date_asc">Data (asc)</option>
                 <option value="total_desc">Total (desc)</option>

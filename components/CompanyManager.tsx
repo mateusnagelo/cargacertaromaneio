@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Building2, Trash2, Upload, X, CreditCard, MapPin, Phone, Edit3, Search } from 'lucide-react';
+import { Plus, Building2, Trash2, Upload, X, CreditCard, MapPin, Phone, Edit3, Search, Info } from 'lucide-react';
 import { CompanyInfo } from '../types';
 import { getCompanies, addCompany, deleteCompany, updateCompany, fetchCnpjWsCompany } from '../api/companies';
 
@@ -9,6 +9,8 @@ const CompanyManager: React.FC = () => {
   const [companies, setCompanies] = useState<CompanyInfo[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CompanyInfo | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [cnpjLookupLoading, setCnpjLookupLoading] = useState(false);
@@ -179,6 +181,17 @@ const CompanyManager: React.FC = () => {
     }
   };
 
+  const confirmDeleteCompany = async () => {
+    if (!deleteTarget?.id) return;
+    setDeleteLoading(true);
+    try {
+      await removeCompany(String(deleteTarget.id));
+      setDeleteTarget(null);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const openAdd = () => {
     setEditingCompanyId(null);
     resetForm();
@@ -313,7 +326,7 @@ const CompanyManager: React.FC = () => {
                   <Edit3 size={20} />
                 </button>
                 <button 
-                  onClick={() => c.id && removeCompany(c.id)}
+                  onClick={() => setDeleteTarget(c)}
                   className="text-gray-200 dark:text-slate-700 hover:text-red-500 p-2 transition-colors"
                 >
                   <Trash2 size={20} />
@@ -632,6 +645,69 @@ const CompanyManager: React.FC = () => {
                 className="flex-1 py-4 rounded-2xl bg-indigo-600 text-white font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 dark:shadow-none"
               >
                 {editingCompanyId ? 'Salvar Alterações' : 'Cadastrar Empresa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-end md:items-center justify-center z-[110] p-0 md:p-4 animate-in fade-in slide-in-from-bottom duration-300">
+          <div className="bg-white dark:bg-slate-900 rounded-t-[40px] md:rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 md:p-8 border-b border-gray-100 dark:border-slate-800 bg-red-50/50 dark:bg-red-900/20 shrink-0">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-red-600 p-2 rounded-xl text-white shadow-lg shadow-red-100 dark:shadow-none"><Trash2 size={20} /></div>
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleteLoading}
+                  className="p-2 hover:bg-red-100/50 dark:hover:bg-slate-800 rounded-xl text-red-600 dark:text-red-400 transition-all disabled:opacity-60"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              <h3 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">Excluir Empresa</h3>
+              <p className="text-[10px] text-red-600 dark:text-red-400 font-black uppercase mt-2 tracking-widest">Ação Irreversível</p>
+            </div>
+
+            <div className="p-6 md:p-8 space-y-4 overflow-y-auto">
+              <div className="bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800 rounded-3xl p-5">
+                <p className="text-xs font-black text-gray-900 dark:text-white uppercase truncate">
+                  {String(deleteTarget.name || '')}
+                </p>
+                <p className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase truncate mt-1">
+                  {String(deleteTarget.location || '')}
+                </p>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 rounded-2xl bg-yellow-50/60 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-900/30">
+                <div className="text-yellow-700 dark:text-yellow-300 pt-0.5"><Info size={18} /></div>
+                <div className="text-[11px] font-bold text-yellow-800 dark:text-yellow-200">
+                  Ao excluir esta empresa, as informações de emissão e dados bancários serão removidos. Romaneios vinculados podem ficar sem referência. Deseja continuar?
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 gap-4 shrink-0">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteLoading}
+                className="py-4 rounded-2xl text-gray-400 dark:text-slate-500 font-black uppercase tracking-widest text-[10px] disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteCompany}
+                disabled={deleteLoading}
+                className="py-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest shadow-xl shadow-red-100 dark:shadow-none text-[10px] disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {deleteLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Excluindo...
+                  </>
+                ) : (
+                  'Deletar'
+                )}
               </button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, MessageSquareText, Trash2, Search, FileText, X, Save, Edit2 } from 'lucide-react';
+import { Plus, MessageSquareText, Trash2, Search, FileText, X, Save, Edit2, Info } from 'lucide-react';
 import { Observation } from '../types';
 import { getObservations, addObservation, updateObservation, deleteObservation } from '../api/observations';
 
@@ -8,6 +8,8 @@ const ObservationManager: React.FC = () => {
   const [observations, setObservations] = useState<Observation[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Observation | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<Partial<Observation>>({
     title: '',
@@ -75,13 +77,22 @@ const ObservationManager: React.FC = () => {
   };
 
   const removeObservation = async (id: string) => {
-    if (confirm('Deseja excluir este modelo de observação?')) {
-      try {
-        await deleteObservation(id);
-        fetchObservations();
-      } catch (error) {
-        console.error('Error deleting observation:', error);
-      }
+    try {
+      await deleteObservation(id);
+      fetchObservations();
+    } catch (error) {
+      console.error('Error deleting observation:', error);
+    }
+  };
+
+  const confirmDeleteObservation = async () => {
+    if (!deleteTarget?.id) return;
+    setDeleteLoading(true);
+    try {
+      await removeObservation(deleteTarget.id);
+      setDeleteTarget(null);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -129,7 +140,7 @@ const ObservationManager: React.FC = () => {
                   <Edit2 size={16} />
                 </button>
                 <button 
-                  onClick={() => removeObservation(o.id)}
+                  onClick={() => setDeleteTarget(o)}
                   className="text-gray-400 dark:text-slate-500 hover:text-red-500 p-1.5"
                   title="Excluir modelo"
                 >
@@ -203,6 +214,66 @@ const ObservationManager: React.FC = () => {
                 className="flex-1 py-4 rounded-2xl bg-cyan-600 text-white font-black uppercase tracking-widest hover:bg-cyan-700 shadow-xl shadow-cyan-100 dark:shadow-none transition-all flex items-center justify-center gap-2 text-[10px]"
               >
                 <Save size={16} /> {editingId ? 'Salvar Alterações' : 'Salvar Modelo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-end md:items-center justify-center z-[110] p-0 md:p-4 animate-in fade-in slide-in-from-bottom duration-300">
+          <div className="bg-white dark:bg-slate-900 rounded-t-[40px] md:rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 md:p-8 border-b border-gray-100 dark:border-slate-800 bg-red-50/50 dark:bg-red-900/20 shrink-0">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-red-600 p-2 rounded-xl text-white shadow-lg shadow-red-100 dark:shadow-none"><Trash2 size={20} /></div>
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleteLoading}
+                  className="p-2 hover:bg-red-100/50 dark:hover:bg-slate-800 rounded-xl text-red-600 dark:text-red-400 transition-all disabled:opacity-60"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              <h3 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">Excluir Observação</h3>
+              <p className="text-[10px] text-red-600 dark:text-red-400 font-black uppercase mt-2 tracking-widest">Ação Irreversível</p>
+            </div>
+
+            <div className="p-6 md:p-8 space-y-4 overflow-y-auto">
+              <div className="bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800 rounded-3xl p-5">
+                <p className="text-xs font-black text-gray-900 dark:text-white uppercase truncate">
+                  {String(deleteTarget.title || '')}
+                </p>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 rounded-2xl bg-yellow-50/60 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-900/30">
+                <div className="text-yellow-700 dark:text-yellow-300 pt-0.5"><Info size={18} /></div>
+                <div className="text-[11px] font-bold text-yellow-800 dark:text-yellow-200">
+                  Ao excluir este modelo de observação, ele não aparecerá mais no rodapé do romaneio. Deseja continuar?
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 gap-4 shrink-0">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteLoading}
+                className="py-4 rounded-2xl text-gray-400 dark:text-slate-500 font-black uppercase tracking-widest text-[10px] disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteObservation}
+                disabled={deleteLoading}
+                className="py-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest shadow-xl shadow-red-100 dark:shadow-none text-[10px] disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {deleteLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Excluindo...
+                  </>
+                ) : (
+                  'Deletar'
+                )}
               </button>
             </div>
           </div>

@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { CatalogProduct, CompanyInfo, Customer, Product, RomaneioData, Expense, ExpenseStock, RomaneioStatus, Observation } from '../types';
 import { DEFAULT_ROMANEIO } from '../constants';
 import { FileDown, ChevronLeft, Edit3, Building2, Users, Package, Plus, DollarSign, Save, CheckCircle, X, AlertTriangle } from 'lucide-react';
-import { formatCurrency, formatDate } from '../utils';
+import { formatCurrency, formatDate, toLocalDateInput } from '../utils';
 import RomaneioForm from './RomaneioForm';
 import RomaneioPreview from './RomaneioPreview';
 import ExpenseManager from './ExpenseManager';
@@ -46,6 +46,9 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
 
   const normalizeRomaneio = (input?: RomaneioData | null): RomaneioData => {
     const base: RomaneioData = { ...DEFAULT_ROMANEIO };
+    const today = toLocalDateInput();
+    base.emissionDate = today;
+    base.saleDate = today;
     if (!input) return base;
     const merged: any = { ...base, ...input };
     merged.company = input.company ?? base.company;
@@ -53,6 +56,8 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
     merged.banking = (input as any).banking ?? (input.company?.banking ?? base.banking);
     merged.products = Array.isArray((input as any).products) ? (input as any).products : [];
     merged.expenses = Array.isArray((input as any).expenses) ? (input as any).expenses : [];
+    if (!String(merged.emissionDate || '').trim()) merged.emissionDate = today;
+    if (!String(merged.saleDate || '').trim()) merged.saleDate = merged.emissionDate || today;
     return merged as RomaneioData;
   };
 
@@ -85,7 +90,14 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
 
         // Set default company if not cloning and companies are loaded
         if (!initialData && companiesData.length > 0) {
-          setRomaneio(prev => ({ ...prev, company: companiesData[0], banking: companiesData[0].banking }));
+          const first = companiesData[0] as any;
+          setRomaneio((prev) => ({
+            ...prev,
+            company: { ...first, banking: first?.banking },
+            companyId: String(first?.id ?? ''),
+            company_id: String(first?.id ?? ''),
+            banking: first?.banking ?? prev.banking,
+          }));
         }
 
       } catch (error: any) {

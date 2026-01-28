@@ -4,6 +4,7 @@ import { Plus, Trash2, User, FileText, ShoppingCart, DollarSign, CreditCard, Bui
 import { addCompany } from '../api/companies';
 import { addCustomer } from '../api/customers';
 import { CompanyInfo, Customer, RomaneioData, Product, Expense, Observation } from '../types';
+import { toLocalDateInput } from '../utils';
 
 interface RomaneioFormProps {
   data: RomaneioData;
@@ -137,7 +138,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
       if (s.includes('T') && s.length >= 10) return s.slice(0, 10);
       const d = new Date(s);
       if (!Number.isFinite(d.getTime())) return '';
-      return d.toISOString().slice(0, 10);
+      return toLocalDateInput(d);
     };
 
     const infNFe =
@@ -348,15 +349,28 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
     return Number.isFinite(n) ? n : 0;
   };
 
+  const normalizeText = (v: unknown) => String(v ?? '').trim();
+
   const updateField = (path: string, value: any) => {
-    const newData = { ...data };
-    const keys = path.split('.');
-    let current: any = newData;
-    for (let i = 0; i < keys.length - 1; i++) {
-      current = current[keys[i]];
-    }
-    current[keys[keys.length - 1]] = value;
-    setData(newData);
+    setData((prev) => {
+      const keys = path.split('.');
+      const next: any = { ...prev };
+      let currentNext: any = next;
+      let currentPrev: any = prev;
+
+      for (let i = 0; i < keys.length - 1; i++) {
+        const k = keys[i];
+        const prevChild = currentPrev?.[k];
+        const nextChild =
+          Array.isArray(prevChild) ? [...prevChild] : { ...(prevChild ?? {}) };
+        currentNext[k] = nextChild;
+        currentNext = nextChild;
+        currentPrev = prevChild;
+      }
+
+      currentNext[keys[keys.length - 1]] = value;
+      return next;
+    });
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -445,12 +459,25 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
             <div className="sm:col-span-2">
               <label className={labelClasses}>Selecionar Empresa</label>
               <select
-                value={String(data.company?.id ?? '')}
+                value={String((data as any)?.companyId ?? data.company?.id ?? '')}
                 onChange={(e) => {
                   const selectedId = e.target.value;
                   const company = companies.find(c => String(c.id) === selectedId);
                   if (company) {
-                    setData(prev => ({ ...prev, company: company, companyId: String(company.id), banking: company.banking }));
+                    setData((prev) => {
+                      const address = normalizeText((company as any)?.address);
+                      const cep = normalizeText((company as any)?.cep);
+
+                      const nextCompany: any = { ...company, address, cep, banking: (company as any)?.banking };
+
+                      return {
+                        ...prev,
+                        company: nextCompany,
+                        companyId: String((company as any)?.id ?? ''),
+                        company_id: String((company as any)?.id ?? ''),
+                        banking: (company as any)?.banking ?? prev.banking,
+                      };
+                    });
                   }
                 }}
                 className={`${inputClasses} font-bold`}
@@ -461,7 +488,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
             </div>
             <div className="sm:col-span-2">
               <label className={labelClasses}>Endereço Completo</label>
-              <input type="text" value={data.company.address} onChange={(e) => updateField('company.address', e.target.value)} className={inputClasses} />
+              <input type="text" value={data.company?.address ?? ''} onChange={(e) => updateField('company.address', e.target.value)} className={inputClasses} />
             </div>
           </div>
           

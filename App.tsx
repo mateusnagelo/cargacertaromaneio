@@ -30,18 +30,30 @@ import RomaneioTracking from './components/RomaneioTracking';
 import ObservationManager from './components/ObservationManager';
 import Login from './components/Login';
 import Reports from './components/Reports';
+import EmailSettings from './components/EmailSettings';
+import Dashboard from './components/Dashboard';
 import { getRomaneios, sendRomaneioEmailNotification } from './api/romaneios';
 import { supabase } from './supabaseClient';
 import { formatCurrency, formatDate } from './utils';
 
-type Screen = 'dashboard' | 'companies' | 'customers' | 'products' | 'romaneios' | 'expenses' | 'tracking' | 'observations' | 'reports';
+type Screen =
+  | 'dashboard'
+  | 'companies'
+  | 'customers'
+  | 'products'
+  | 'romaneios'
+  | 'expenses'
+  | 'tracking'
+  | 'observations'
+  | 'reports'
+  | 'settings';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [forcePasswordReset, setForcePasswordReset] = useState(false);
-  const [activeScreen, setActiveScreen] = useState<Screen>('tracking');
+  const [activeScreen, setActiveScreen] = useState<Screen>('dashboard');
   const [selectedRomaneio, setSelectedRomaneio] = useState<RomaneioData | null>(null);
-  const [screenStack, setScreenStack] = useState<Screen[]>(['tracking']);
+  const [screenStack, setScreenStack] = useState<Screen[]>(['dashboard']);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [dueSoonRomaneios, setDueSoonRomaneios] = useState<RomaneioData[]>([]);
   const [showDueSoonModal, setShowDueSoonModal] = useState(false);
@@ -80,17 +92,69 @@ const App: React.FC = () => {
     setScreenStack((prev) => {
       if (prev.length <= 1) {
         setSelectedRomaneio(null);
-        setActiveScreen('tracking');
-        return ['tracking'];
+        setActiveScreen('dashboard');
+        return ['dashboard'];
       }
       const next = prev.slice(0, -1);
-      const previousScreen = next[next.length - 1] ?? 'tracking';
+      const previousScreen = next[next.length - 1] ?? 'dashboard';
       setActiveScreen(previousScreen);
       if (previousScreen !== 'romaneios') {
         setSelectedRomaneio(null);
       }
-      return next.length ? next : ['tracking'];
+      return next.length ? next : ['dashboard'];
     });
+  };
+
+  const toIsoDateOnly = (v: unknown) => {
+    const s = String(v ?? '').trim();
+    if (!s) return '';
+    const br = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (br) {
+      const dd = String(br[1]).padStart(2, '0');
+      const mm = String(br[2]).padStart(2, '0');
+      const yyyy = String(br[3]);
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    const isoMatch = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (isoMatch?.[1]) return isoMatch[1];
+    const d = new Date(s);
+    const t = d.getTime();
+    if (!Number.isFinite(t)) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const extractDueDate = (r: any) => {
+    const direct =
+      r?.dueDate ??
+      r?.due_date ??
+      r?.data_vencimento ??
+      r?.data_de_vencimento ??
+      r?.vencimento ??
+      r?.dataVencimento ??
+      r?.dataDeVencimento ??
+      '';
+    if (direct) return direct;
+
+    const payload = r?.payload && typeof r.payload === 'object' ? r.payload : null;
+    if (!payload) return '';
+
+    const walk = (obj: any, depth: number): string => {
+      if (!obj || depth > 5) return '';
+      for (const [k, v] of Object.entries(obj)) {
+        if (typeof v === 'string') {
+          if (/(due|venc)/i.test(k) && toIsoDateOnly(v)) return v;
+        } else if (v && typeof v === 'object') {
+          const found = walk(v, depth + 1);
+          if (found) return found;
+        }
+      }
+      return '';
+    };
+
+    return walk(payload, 0);
   };
 
   useEffect(() => {
@@ -137,7 +201,7 @@ const App: React.FC = () => {
     const thresholdDays = 3;
 
     const diffDays = (isoDate: string) => {
-      const raw = String(isoDate || '').trim();
+      const raw = toIsoDateOnly(isoDate);
       if (!raw) return null;
       const d = new Date(`${raw}T00:00:00`);
       const t = d.getTime();
@@ -154,13 +218,20 @@ const App: React.FC = () => {
             if (!r) return false;
             const s = (r.status || 'PENDENTE') as RomaneioStatus;
             if (s !== 'PENDENTE') return false;
-            const d = diffDays(String((r as any).dueDate || ''));
+            const due = extractDueDate(r as any);
+            const d = diffDays(String(due ?? ''));
             if (d === null) return false;
             return d <= thresholdDays;
           })
           .sort((a, b) => {
-            const da = diffDays(String((a as any).dueDate || '')) ?? 9999;
-            const db = diffDays(String((b as any).dueDate || '')) ?? 9999;
+            const da =
+              diffDays(
+                String(extractDueDate(a as any) ?? '')
+              ) ?? 9999;
+            const db =
+              diffDays(
+                String(extractDueDate(b as any) ?? '')
+              ) ?? 9999;
             if (da !== db) return da - db;
             return String(a.number || '').localeCompare(String(b.number || ''), undefined, { numeric: true });
           });
@@ -205,7 +276,7 @@ const App: React.FC = () => {
   };
 
   const daysUntilDue = (isoDate: string) => {
-    const raw = String(isoDate || '').trim();
+    const raw = toIsoDateOnly(isoDate);
     if (!raw) return null;
     const d = new Date(`${raw}T00:00:00`);
     const t = d.getTime();
@@ -225,8 +296,8 @@ const App: React.FC = () => {
       setIsAuthenticated(false);
       setForcePasswordReset(false);
       setSelectedRomaneio(null);
-      setActiveScreen('tracking');
-      setScreenStack(['tracking']);
+      setActiveScreen('dashboard');
+      setScreenStack(['dashboard']);
       setIsSidebarOpen(false);
       setShowDueSoonModal(false);
       setDueSoonRomaneios([]);
@@ -260,6 +331,8 @@ const App: React.FC = () => {
 
   const renderScreen = () => {
     switch (activeScreen) {
+      case 'dashboard':
+        return <Dashboard />;
       case 'tracking':
         return <RomaneioTracking 
                   onView={(romaneio) => {
@@ -279,6 +352,8 @@ const App: React.FC = () => {
         return <ExpenseManager />;
       case 'reports':
         return <Reports />;
+      case 'settings':
+        return <EmailSettings />;
       case 'romaneios':
         return (
           <RomaneioGenerator
@@ -312,6 +387,7 @@ const App: React.FC = () => {
   }
 
   const menuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-yellow-500' },
     { id: 'tracking', label: 'Histórico', icon: ClipboardList, color: 'text-purple-500' },
     { id: 'romaneios', label: 'Novo Romaneio', icon: FileText, color: 'text-orange-500' },
     { id: 'reports', label: 'Relatórios', icon: BarChart3, color: 'text-blue-500' },
@@ -320,6 +396,7 @@ const App: React.FC = () => {
     { id: 'observations', label: 'Observações', icon: MessageSquareText, color: 'text-cyan-500' },
     { id: 'customers', label: 'Clientes', icon: Users, color: 'text-blue-500' },
     { id: 'companies', label: 'Empresas', icon: Building2, color: 'text-indigo-500' },
+    { id: 'settings', label: 'Config. E-mail', icon: Settings, color: 'text-slate-500' },
   ];
 
   return (
@@ -408,8 +485,8 @@ const App: React.FC = () => {
                     </thead>
                     <tbody>
                       {dueSoonRomaneios.map((r) => {
-                        const due = String((r as any).dueDate || '');
-                        const days = daysUntilDue(due);
+                        const dueIso = toIsoDateOnly(extractDueDate(r as any));
+                        const days = daysUntilDue(dueIso);
                         const isOverdue = days !== null && days < 0;
                         const total = computeRomaneioTotal(r);
                         return (
@@ -421,7 +498,7 @@ const App: React.FC = () => {
                           >
                             <td className={`py-4 pr-6 font-black ${isOverdue ? 'text-red-700 dark:text-red-300' : 'text-gray-900 dark:text-white'}`}>{String(r.number || '')}</td>
                             <td className="py-4 pr-6 text-gray-700 dark:text-slate-300">{String(r.client?.name || r.customer?.name || '')}</td>
-                            <td className={`py-4 pr-6 ${isOverdue ? 'text-red-700 dark:text-red-300 font-bold' : 'text-gray-600 dark:text-slate-400'}`}>{due ? formatDate(due) : '-'}</td>
+                            <td className={`py-4 pr-6 ${isOverdue ? 'text-red-700 dark:text-red-300 font-bold' : 'text-gray-600 dark:text-slate-400'}`}>{dueIso ? formatDate(dueIso) : '-'}</td>
                             <td className="py-4 pr-6">
                               {days === null ? (
                                 <span className="text-gray-600 dark:text-slate-400">-</span>
@@ -536,7 +613,7 @@ const App: React.FC = () => {
               <button
                 key={item.id}
                 onClick={() => {
-                  navigateTo(item.id as Screen, item.id === 'tracking' ? { reset: true } : undefined);
+                  navigateTo(item.id as Screen, item.id === 'tracking' || item.id === 'dashboard' ? { reset: true } : undefined);
                   setIsSidebarOpen(false);
                 }}
                 className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 group ${

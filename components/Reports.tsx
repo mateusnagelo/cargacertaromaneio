@@ -4,7 +4,7 @@ import { getCompanies } from '../api/companies';
 import { getCustomers } from '../api/customers';
 import { getRomaneios } from '../api/romaneios';
 import { CompanyInfo, Customer, RomaneioData, RomaneioStatus } from '../types';
-import { formatCurrency, formatDate } from '../utils';
+import { formatCurrency, formatDate, toLocalDateInput } from '../utils';
 
 type DateField = 'saleDate' | 'emissionDate';
 
@@ -43,23 +43,63 @@ const Reports: React.FC = () => {
 
     const run = async () => {
       try {
-        setLoading(true);
-        const [r, c, cu] = await Promise.all([getRomaneios(signal), getCompanies(signal), getCustomers(signal)]);
-        setRomaneios(r);
+        const [c, cu] = await Promise.all([getCompanies(signal), getCustomers(signal)]);
         setCompanies(c);
         setCustomers(cu);
       } catch (e: any) {
         if (e?.name !== 'AbortError') {
           alert(`Erro ao carregar relatórios: ${String(e?.message || e)}`);
         }
-      } finally {
-        setLoading(false);
       }
     };
 
     run();
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    const parseAmount = (v: string) => {
+      const s = String(v ?? '').trim();
+      if (!s) return null;
+      const n = Number(s.replace(',', '.'));
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const serverSearch = (() => {
+      const term = search.trim();
+      return /^\d+$/.test(term) ? term : '';
+    })();
+
+    const t = setTimeout(async () => {
+      try {
+        setLoading(true);
+        const r = await getRomaneios(signal, {
+          status,
+          companyId: companyId || undefined,
+          customerId: customerId || undefined,
+          minTotal: parseAmount(minTotal),
+          maxTotal: parseAmount(maxTotal),
+          search: serverSearch || undefined,
+          mode: 'list',
+        });
+        setRomaneios(r);
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') {
+          alert(`Erro ao carregar romaneios: ${String(e?.message || e)}`);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [status, companyId, customerId, minTotal, maxTotal, search]);
 
   const computeTotal = (r: RomaneioData) => {
     const productsTotal = Array.isArray(r.products)
@@ -243,7 +283,7 @@ const Reports: React.FC = () => {
         y += sliceHpx;
       }
 
-      const stamp = new Date().toISOString().slice(0, 10);
+      const stamp = toLocalDateInput();
       pdf.save(`Relatorio_Romaneios_${stamp}.pdf`);
     } catch (e: any) {
       alert(`Erro ao exportar PDF: ${String(e?.message || e)}`);

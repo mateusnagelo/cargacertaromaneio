@@ -18,10 +18,11 @@ import {
   X,
   Info
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '../utils';
+import { formatCurrency, formatDate, toLocalDateInput } from '../utils';
 import {
   addRomaneio,
   getRomaneios,
+  getRomaneioById,
   deleteRomaneio as deleteRomaneioAPI,
   updateRomaneioStatus as updateStatusAPI,
   sendRomaneioEmailNotification,
@@ -36,6 +37,10 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<RomaneioStatus | 'TODOS'>('TODOS');
+  const [dateField, setDateField] = useState<'EMISSAO' | 'CRIACAO'>('EMISSAO');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [limit, setLimit] = useState<number>(5);
   
   const [cloneTarget, setCloneTarget] = useState<RomaneioData | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RomaneioData | null>(null);
@@ -48,10 +53,26 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     documentInfo: true
   });
 
-  const isConcluido = (status: unknown) => {
+  const normalizeStatus = (status: unknown): RomaneioStatus => {
     const s = String(status ?? '').trim().toUpperCase();
-    return s === 'CONCLUÍDO' || s === 'CONCLUIDO';
+    if (s === 'CANCELADO' || s.startsWith('CANC') || s.includes('CANCEL')) return 'CANCELADO';
+    if (
+      s === 'CONCLUÍDO' ||
+      s === 'CONCLUIDO' ||
+      s.startsWith('CONCL') ||
+      s.startsWith('FINALIZ') ||
+      s.startsWith('FECH') ||
+      s.startsWith('ENCERR') ||
+      s.startsWith('PAGO') ||
+      s.startsWith('ENTREG') ||
+      s === 'ENTREGUE'
+    ) {
+      return 'CONCLUÍDO';
+    }
+    return 'PENDENTE';
   };
+
+  const isConcluido = (status: unknown) => normalizeStatus(status) === 'CONCLUÍDO';
 
   const toOptionalInt = (v: unknown) => {
     const s = String(v ?? '').trim();
@@ -83,19 +104,18 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     });
   };
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchRomaneios(controller.signal);
-
-    return () => {
-      controller.abort();
-    };
-  }, []);
-
   const fetchRomaneios = async (signal?: AbortSignal) => {
     try {
       setLoading(true);
-      const data = await getRomaneios(signal);
+      const data = await getRomaneios(signal, {
+        search: searchTerm,
+        status: statusFilter,
+        mode: 'list',
+        dateField,
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
+        limit: limit > 0 ? limit : undefined,
+      });
       setHistory(sortByNewestId(Array.isArray(data) ? data : []));
     } catch (error: any) {
       if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
@@ -106,12 +126,53 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     }
   };
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      void fetchRomaneios(controller.signal);
+    }, 250);
+
+    return () => {
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [searchTerm, statusFilter, fromDate, toDate, dateField, limit]);
+
+  const handleView = async (row: RomaneioData) => {
+    try {
+      if (!row?.id) return;
+      setLoading(true);
+      const full = await getRomaneioById(String(row.id));
+      onView(full);
+    } catch (e) {
+      console.error('Falha ao carregar romaneio:', e);
+      alert('Falha ao carregar romaneio para visualização.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloneOpen = async (row: RomaneioData) => {
+    try {
+      if (!row?.id) return;
+      setLoading(true);
+      const full = await getRomaneioById(String(row.id));
+      setCloneTarget(full);
+    } catch (e) {
+      console.error('Falha ao carregar romaneio para clonagem:', e);
+      alert('Falha ao carregar romaneio para clonagem.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const updateStatus = async (id: string, status: RomaneioStatus) => {
     try {
       await updateStatusAPI(id, status);
       fetchRomaneios(); // Re-fetch to get the latest data
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating status:', error);
+      alert(String(error?.message || error || 'Falha ao atualizar status.'));
     }
   };
 
@@ -129,16 +190,6 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     }
   };
 
-  const filtered = history.filter(r => {
-    if (!r) return false;
-    const num = String(r.number || "");
-    const clientName = String(r.client?.name || "").toLowerCase();
-    const term = searchTerm.toLowerCase();
-    const matchesSearch = num.includes(term) || clientName.includes(term);
-    const matchesStatus = statusFilter === 'TODOS' || r.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
   const totals = history.reduce((acc, r) => {
     if (!r) return acc;
     const productsTotal = Array.isArray(r.products) 
@@ -150,13 +201,14 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     const totalFromItems = productsTotal + expensesTotal;
     const totalFromDb = Number((r as any)?.montante_total ?? (r as any)?.total_value ?? 0) || 0;
     const total = totalFromItems > 0 ? totalFromItems : totalFromDb;
-    if (r.status === 'CONCLUÍDO') acc.concluido += total;
-    if (r.status === 'PENDENTE' || !r.status) acc.pendente += total;
+    const s = normalizeStatus((r as any)?.status);
+    if (s === 'CONCLUÍDO') acc.concluido += total;
+    if (s !== 'CONCLUÍDO' && s !== 'CANCELADO') acc.pendente += total;
     return acc;
   }, { concluido: 0, pendente: 0 });
 
-  const getStatusBadge = (status: RomaneioStatus) => {
-    const s = status || 'PENDENTE';
+  const getStatusBadge = (status: unknown) => {
+    const s = normalizeStatus(status);
     switch (s) {
       case 'CONCLUÍDO':
         return <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-black uppercase border border-green-100 dark:border-green-800"><CheckCircle2 size={12}/> Concluído</span>;
@@ -177,8 +229,8 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
       ...cloneTarget,
       number: `CLONE-${cloneTarget.number}`, // Indicate it's a clone
       status: 'PENDENTE',
-      emissionDate: new Date().toISOString().split('T')[0],
-      saleDate: new Date().toISOString().split('T')[0],
+      emissionDate: toLocalDateInput(),
+      saleDate: toLocalDateInput(),
       dueDate: '',
       // Ensure we are passing only IDs for relations
       customer_id: cloneOptions.client && cloneTarget.customer ? cloneTarget.customer.id : undefined,
@@ -261,6 +313,79 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
           </div>
         </div>
 
+        <div className="p-4 md:p-6 border-b border-gray-50 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-800/20 flex flex-col md:flex-row items-stretch md:items-end justify-between gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Período</span>
+              <select
+                value={dateField}
+                onChange={(e) => setDateField(e.target.value as any)}
+                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 transition-all text-[11px] font-bold text-gray-700 dark:text-white"
+              >
+                <option value="EMISSAO">Data de Emissão</option>
+                <option value="CRIACAO">Data de Cadastro</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">De</span>
+              <div className="relative">
+                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={16} />
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 transition-all text-[11px] font-bold text-gray-700 dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Até</span>
+              <div className="relative">
+                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={16} />
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 transition-all text-[11px] font-bold text-gray-700 dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Quantidade</span>
+              <select
+                value={String(limit)}
+                onChange={(e) => setLimit(Number(e.target.value))}
+                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 transition-all text-[11px] font-bold text-gray-700 dark:text-white"
+              >
+                <option value="5">Últimos 5</option>
+                <option value="10">Últimos 10</option>
+                <option value="20">Últimos 20</option>
+                <option value="50">Últimos 50</option>
+                <option value="100">Últimos 100</option>
+                <option value="0">Todos</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              onClick={() => {
+                setFromDate('');
+                setToDate('');
+                setDateField('EMISSAO');
+                setLimit(5);
+              }}
+              className="px-4 py-3 rounded-2xl bg-white dark:bg-slate-800 text-gray-400 dark:text-slate-400 border border-gray-100 dark:border-slate-700 hover:text-gray-600 dark:hover:text-slate-200 transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
+            >
+              <X size={16} />
+              Limpar
+            </button>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
             <thead>
@@ -274,7 +399,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
-              {filtered.map(r => {
+              {history.map(r => {
                 const pSum = Array.isArray(r.products) ? r.products.reduce((acc, p) => acc + (p.quantity * p.unitValue), 0) : 0;
                 const eSum = Array.isArray(r.expenses) ? r.expenses.reduce((acc, e) => acc + (Number(e.total) || 0), 0) : 0;
                 const totalFromItems = pSum + eSum;
@@ -321,8 +446,8 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
                     </td>
                     <td className="px-6 py-5 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setCloneTarget(r)} className="p-2.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-all"><Copy size={18} /></button>
-                        <button onClick={() => onView(r)} className="p-2.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-xl transition-all"><Printer size={18} /></button>
+                        <button onClick={() => { void handleCloneOpen(r); }} className="p-2.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-all"><Copy size={18} /></button>
+                        <button onClick={() => { void handleView(r); }} className="p-2.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-xl transition-all"><Printer size={18} /></button>
                         <button onClick={() => setDeleteTarget(r)} className="p-2.5 text-gray-300 dark:text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all"><Trash2 size={18} /></button>
                       </div>
                     </td>
@@ -334,7 +459,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
                   <td colSpan={6} className="py-20 text-center text-gray-400 dark:text-slate-600 italic">Carregando romaneios...</td>
                 </tr>
               )}
-              {!loading && filtered.length === 0 && (
+              {!loading && history.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-20 text-center text-gray-400 dark:text-slate-600 italic">Nenhum romaneio encontrado.</td>
                 </tr>

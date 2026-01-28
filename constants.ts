@@ -1,5 +1,6 @@
 
 import { RomaneioData } from './types';
+import { toLocalDateInput } from './utils';
 
 export const DEFAULT_OBSERVATION = `Atenção: Durante o recebimento desta carga, favor conferir este romaneio de compra.
 1-Em caso de conformidade deve-se datar, assinar e devolver via e-mail.
@@ -14,8 +15,8 @@ export const DEFAULT_ROMANEIO: RomaneioData = {
   customerId: "",
   number: "",
   status: "PENDENTE",
-  emissionDate: new Date().toISOString().split('T')[0],
-  saleDate: new Date().toISOString().split('T')[0],
+  emissionDate: toLocalDateInput(),
+  saleDate: toLocalDateInput(),
   dueDate: "",
   natureOfOperation: "VENDA",
   terms: "30 DIAS",

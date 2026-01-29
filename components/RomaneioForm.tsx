@@ -2,14 +2,15 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Plus, Trash2, User, FileText, ShoppingCart, DollarSign, CreditCard, Building2, Upload, MessageSquareText, X } from 'lucide-react';
 import { addCompany } from '../api/companies';
-import { addCustomer } from '../api/customers';
-import { CompanyInfo, Customer, RomaneioData, Product, Expense, Observation } from '../types';
+import { addCustomer, addProducer } from '../api/customers';
+import { CompanyInfo, Customer, RomaneioData, Product, Expense, Observation, RomaneioKind } from '../types';
 import { toLocalDateInput } from '../utils';
 
 interface RomaneioFormProps {
   data: RomaneioData;
   setData: React.Dispatch<React.SetStateAction<RomaneioData>>;
   totals: { products: number, expenses: number, grand: number };
+  kind?: RomaneioKind;
   observations?: Observation[];
   companies: any[]; // Replace with specific types if available
   customers: any[]; // Replace with specific types if available
@@ -27,6 +28,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
   data, 
   setData, 
   totals, 
+  kind: kindProp,
   observations = [],
   companies = [],
   customers = [],
@@ -42,6 +44,17 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const xmlInputRef = useRef<HTMLInputElement>(null);
   const [customerSearch, setCustomerSearch] = useState('');
+  const inferKind = (r?: Partial<RomaneioData> | null) => {
+    const k = String((r as any)?.kind ?? '').trim().toUpperCase();
+    if (k === 'COMPRA') return 'COMPRA';
+    if (k === 'VENDA') return 'VENDA';
+    const nature = String((r as any)?.natureOfOperation ?? '').trim().toUpperCase();
+    if (nature.includes('COMPRA')) return 'COMPRA';
+    return 'VENDA';
+  };
+  const kind = (kindProp as any) || inferKind(data);
+  const customerLabel = kind === 'COMPRA' ? 'Produtor Rural' : 'Cliente';
+  const showBankingFields = kind !== 'COMPRA' || !!data.bankingEnabled;
 
   const filteredCustomers = useMemo(() => {
     const normalizeText = (v: unknown) =>
@@ -267,10 +280,11 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
       }
 
       if (!customerToApply && canCreateCustomer) {
-        const created = await addCustomer(
+        const created = await (kind === 'COMPRA' ? addProducer : addCustomer)(
           {
             name: parsed.dest.name,
             cnpj: parsed.dest.cnpj,
+            role: kind === 'COMPRA' ? 'PRODUTOR_RURAL' : 'CLIENTE',
             neighborhood: parsed.dest.neighborhood || '',
             ie: '/',
             city: parsed.dest.city || '',
@@ -543,7 +557,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
             <input type="date" value={data.emissionDate} onChange={(e) => updateField('emissionDate', e.target.value)} className={inputClasses} />
           </div>
           <div>
-            <label className={labelClasses}>Venda</label>
+            <label className={labelClasses}>{kind === 'COMPRA' ? 'Compra' : 'Venda'}</label>
             <input type="date" value={data.saleDate} onChange={(e) => updateField('saleDate', e.target.value)} className={inputClasses} />
           </div>
           <div>
@@ -565,11 +579,11 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
       <section className={cardClasses}>
         <div className="flex items-center gap-3 mb-6">
           <div className="bg-blue-50 dark:bg-blue-900/30 p-2 rounded-xl text-blue-500"><User size={20} /></div>
-          <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Dados do Cliente</h2>
+          <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Dados do {customerLabel}</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <div className="sm:col-span-2">
-            <label className={labelClasses}>Selecionar Cliente</label>
+            <label className={labelClasses}>Selecionar {customerLabel}</label>
             <input
               type="text"
               value={customerSearch}
@@ -615,7 +629,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
               }}
               className={`${inputClasses} font-bold`}
             >
-              <option value="" disabled>Selecione um cliente</option>
+              <option value="" disabled>Selecione um {customerLabel.toLowerCase()}</option>
               {filteredCustomers.map(c => (
                 <option key={String(c.id)} value={String(c.id)}>
                   {c.name}
@@ -758,7 +772,9 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="bg-cyan-50 dark:bg-cyan-900/30 p-2 rounded-xl text-cyan-500"><MessageSquareText size={20} /></div>
-            <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Observações ao Cliente</h2>
+            <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">
+              {kind === 'COMPRA' ? 'Observações ao Produtor' : 'Observações ao Cliente'}
+            </h2>
           </div>
           <div className="flex items-center gap-2">
             {observations.length > 0 && (
@@ -800,24 +816,39 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
 
       {/* Banking */}
       <section className={cardClasses}>
-        <div className="flex items-center gap-3 mb-6">
-          <div className="bg-purple-50 dark:bg-purple-900/30 p-2 rounded-xl text-purple-500"><CreditCard size={20} /></div>
-          <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Dados Bancários</h2>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="bg-purple-50 dark:bg-purple-900/30 p-2 rounded-xl text-purple-500"><CreditCard size={20} /></div>
+            <h2 className="text-lg font-black text-gray-800 dark:text-white uppercase tracking-tight">Dados Bancários</h2>
+          </div>
+          {kind === 'COMPRA' && (
+            <label className="flex items-center gap-2 text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest select-none">
+              <input
+                type="checkbox"
+                checked={!!data.bankingEnabled}
+                onChange={(e) => updateField('bankingEnabled', e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              Incluir
+            </label>
+          )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          <div>
-            <label className={labelClasses}>Banco</label>
-            <input type="text" value={data.banking.bank} onChange={e => updateField('banking.bank', e.target.value)} className={inputClasses} />
+        {showBankingFields && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className={labelClasses}>Banco</label>
+              <input type="text" value={data.banking.bank} onChange={e => updateField('banking.bank', e.target.value)} className={inputClasses} />
+            </div>
+            <div>
+              <label className={labelClasses}>PIX</label>
+              <input type="text" value={data.banking.pix} onChange={e => updateField('banking.pix', e.target.value)} className={inputClasses} />
+            </div>
+            <div>
+              <label className={labelClasses}>Titular</label>
+              <input type="text" value={data.banking.owner} onChange={e => updateField('banking.owner', e.target.value)} className={inputClasses} />
+            </div>
           </div>
-          <div>
-            <label className={labelClasses}>PIX</label>
-            <input type="text" value={data.banking.pix} onChange={e => updateField('banking.pix', e.target.value)} className={inputClasses} />
-          </div>
-          <div>
-            <label className={labelClasses}>Titular</label>
-            <input type="text" value={data.banking.owner} onChange={e => updateField('banking.owner', e.target.value)} className={inputClasses} />
-          </div>
-        </div>
+        )}
       </section>
     </div>
   );

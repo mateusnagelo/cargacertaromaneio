@@ -1,11 +1,21 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Plus, Users, Trash2, Search, MapPin, Edit2, X, Info } from 'lucide-react';
-import { Customer } from '../types';
-import { getCustomers, addCustomer, deleteCustomer, updateCustomer, fetchCnpjWsCustomer } from '../api/customers';
+import { Customer, CustomerRole } from '../types';
+import { getCustomers, getProducers, addCustomer, addProducer, deleteCustomer, deleteProducer, updateCustomer, updateProducer, fetchCnpjWsCustomer } from '../api/customers';
 
-const CustomerManager: React.FC = () => {
+type CustomerManagerMode = 'clientes' | 'produtores';
+
+const CustomerManager: React.FC<{ mode?: CustomerManagerMode }> = ({ mode = 'clientes' }) => {
   const normalizeDoc = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+  const roleFilter: CustomerRole = mode === 'produtores' ? 'PRODUTOR_RURAL' : 'CLIENTE';
+  const entity = mode === 'produtores' ? 'Produtor Rural' : 'Cliente';
+  const entityLower = mode === 'produtores' ? 'produtor rural' : 'cliente';
+  const title = mode === 'produtores' ? 'Gestão de Produtores Rurais' : 'Gestão de Clientes';
+  const subtitle =
+    mode === 'produtores'
+      ? 'Administre sua base de produtores para emissão rápida de romaneios de compra.'
+      : 'Administre sua base de clientes para emissão rápida de romaneios.';
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -43,12 +53,12 @@ const CustomerManager: React.FC = () => {
     return () => {
       controller.abort();
     };
-  }, []);
+  }, [mode]);
 
   const fetchCustomers = async (signal?: AbortSignal) => {
     try {
       setLoading(true);
-      const data = await getCustomers(signal);
+      const data = mode === 'produtores' ? await getProducers(signal) : await getCustomers(signal);
       if (data) {
         setCustomers(data);
       }
@@ -66,6 +76,7 @@ const CustomerManager: React.FC = () => {
     setFormData({
       name: '',
       cnpj: '',
+      role: roleFilter,
       city: '',
       state: '',
       address: '',
@@ -92,6 +103,7 @@ const CustomerManager: React.FC = () => {
     setFormData({
       name: c.name || '',
       cnpj: c.cnpj || '',
+      role: (c.role ?? roleFilter) as any,
       ie: c.ie || '/',
       neighborhood: c.neighborhood || '',
       city: c.city || '',
@@ -117,7 +129,7 @@ const CustomerManager: React.FC = () => {
     const cnpjRaw = String(formData.cnpj || '');
     const cnpj = cnpjRaw.replace(/\D/g, '');
     if (cnpj.length !== 14) {
-      setCnpjLookupError('Informe um CNPJ com 14 dígitos.');
+      setCnpjLookupError('Informe um CNPJ com 14 dígitos para consulta.');
       return;
     }
 
@@ -193,11 +205,15 @@ const CustomerManager: React.FC = () => {
       const addressBase = addressParts.join(', ');
       const cityState = [formData.city, formData.state].filter(Boolean).join('/');
       const fullAddress = cityState ? `${addressBase} - ${cityState}` : addressBase;
+      const roleToPersist: CustomerRole = (formData.role as any) || roleFilter;
+      const doUpdate = mode === 'produtores' ? updateProducer : updateCustomer;
+      const doInsert = mode === 'produtores' ? addProducer : addCustomer;
 
       if (editingId) {
-        await updateCustomer(editingId, {
+        await doUpdate(editingId, {
           name: formData.name,
           cnpj: doc || formData.cnpj || '',
+          role: roleToPersist,
           ie: formData.ie || '/',
           neighborhood: formData.neighborhood || '',
           city: formData.city || '',
@@ -223,9 +239,10 @@ const CustomerManager: React.FC = () => {
               `Este CNPJ/CPF já possui cadastro no sistema (${dup.name || 'Sem nome'}). Deseja sobrescrever o cadastro existente?`
             );
             if (!ok) return;
-            await updateCustomer(dup.id, {
+            await doUpdate(dup.id, {
               name: formData.name,
               cnpj: doc,
+              role: roleToPersist,
               ie: formData.ie || '/',
               neighborhood: formData.neighborhood || '',
               city: formData.city || '',
@@ -247,6 +264,7 @@ const CustomerManager: React.FC = () => {
             setFormData({
               name: '',
               cnpj: '',
+              role: roleFilter,
               city: '',
               state: '',
               address: '',
@@ -269,9 +287,10 @@ const CustomerManager: React.FC = () => {
             return;
           }
         }
-        await addCustomer({
+        await doInsert({
           name: formData.name,
           cnpj: doc || formData.cnpj || '',
+          role: roleToPersist,
           ie: formData.ie || '/',
           neighborhood: formData.neighborhood || '',
           city: formData.city || '',
@@ -294,6 +313,7 @@ const CustomerManager: React.FC = () => {
       setFormData({
         name: '',
         cnpj: '',
+        role: roleFilter,
         city: '',
         state: '',
         address: '',
@@ -323,7 +343,7 @@ const CustomerManager: React.FC = () => {
   const removeCustomer = async (id: string) => {
     const controller = new AbortController();
     try {
-      await deleteCustomer(id, controller.signal);
+      await (mode === 'produtores' ? deleteProducer : deleteCustomer)(id, controller.signal);
       fetchCustomers(controller.signal); // Refresh list
     } catch (error: any) {
       if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
@@ -343,23 +363,40 @@ const CustomerManager: React.FC = () => {
     }
   };
 
-  const filtered = customers.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (c.cnpj && c.cnpj.includes(searchTerm))
-  );
+  const customersForMode = useMemo(() => {
+    return (customers || []).filter((c) => (c?.role ?? 'CLIENTE') === roleFilter);
+  }, [customers, roleFilter]);
+
+  const filtered = customersForMode.filter((c) => {
+    const term = searchTerm.toLowerCase();
+    const byName = String(c.name || '').toLowerCase().includes(term);
+    const byDoc = String(c.cnpj || '').includes(searchTerm);
+    return byName || byDoc;
+  });
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
+      {loading && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-2xl rounded-[28px] px-8 py-8 flex flex-col items-center gap-4 w-[92%] max-w-sm">
+            <div className="w-14 h-14 rounded-full border-4 border-gray-200 dark:border-slate-700 border-t-blue-600 dark:border-t-blue-500 animate-spin" />
+            <div className="text-center">
+              <div className="text-[11px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500">Carregando</div>
+              <div className="text-sm font-black text-gray-900 dark:text-white mt-1">Atualizando dados…</div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-black text-gray-800 dark:text-white uppercase tracking-tight">Gestão de Clientes</h1>
-          <p className="text-gray-500 dark:text-slate-400">Administre sua base de clientes para emissão rápida de romaneios.</p>
+          <h1 className="text-2xl font-black text-gray-800 dark:text-white uppercase tracking-tight">{title}</h1>
+          <p className="text-gray-500 dark:text-slate-400">{subtitle}</p>
         </div>
         <button 
           onClick={openCreate}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 dark:shadow-none"
         >
-          <Plus size={20} /> Novo Cliente
+          <Plus size={20} /> Novo {entity}
         </button>
       </div>
 
@@ -368,7 +405,7 @@ const CustomerManager: React.FC = () => {
           <Search className="text-gray-400 dark:text-slate-500" size={18} />
           <input 
             type="text" 
-            placeholder="Buscar cliente por nome ou CNPJ/CPF..." 
+            placeholder={`Buscar ${entityLower} por nome ou CNPJ/CPF...`}
             className="bg-transparent border-none outline-none w-full text-sm text-gray-900 dark:text-white"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -377,19 +414,19 @@ const CustomerManager: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
           {filtered.map(c => (
-            <div key={c.id} className="border border-gray-100 dark:border-slate-800 rounded-2xl p-4 hover:shadow-md dark:hover:bg-slate-800/50 transition-all group relative bg-white dark:bg-slate-900">
-              <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div key={c.id} className="border border-gray-100 dark:border-slate-800 rounded-2xl p-4 pr-16 hover:shadow-md dark:hover:bg-slate-800/50 transition-all group relative bg-white dark:bg-slate-900">
+              <div className="absolute top-4 right-4 z-10 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={() => openEdit(c)}
                   className="text-gray-300 dark:text-slate-700 hover:text-blue-600 transition-colors"
-                  title="Editar cliente"
+                  title={`Editar ${entityLower}`}
                 >
                   <Edit2 size={16} />
                 </button>
                 <button 
                   onClick={() => setDeleteTarget(c)}
                   className="text-gray-300 dark:text-slate-700 hover:text-red-500 transition-colors"
-                  title="Excluir cliente"
+                  title={`Excluir ${entityLower}`}
                 >
                   <Trash2 size={16} />
                 </button>
@@ -398,8 +435,8 @@ const CustomerManager: React.FC = () => {
                 <div className="bg-blue-50 dark:bg-blue-900/20 p-2.5 rounded-xl">
                   <Users className="text-blue-600 dark:text-blue-400" size={20} />
                 </div>
-                <div>
-                  <h4 className="font-bold text-gray-800 dark:text-slate-200 leading-none">{c.name}</h4>
+                <div className="min-w-0">
+                  <h4 className="font-bold text-gray-800 dark:text-slate-200 leading-none truncate">{c.name}</h4>
                   <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono">{c.cnpj}</span>
                 </div>
               </div>
@@ -416,7 +453,7 @@ const CustomerManager: React.FC = () => {
           ))}
           {filtered.length === 0 && (
             <div className="col-span-full py-20 text-center text-gray-400 dark:text-slate-600 italic border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-3xl">
-              Nenhum cliente cadastrado ainda.
+              Nenhum {entityLower} cadastrado ainda.
             </div>
           )}
         </div>
@@ -427,7 +464,7 @@ const CustomerManager: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-gray-100 dark:border-slate-800 bg-blue-50 dark:bg-blue-900/20">
               <h3 className="text-lg font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2">
-                <Users className="text-blue-600 dark:text-blue-500" /> {editingId ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}
+                <Users className="text-blue-600 dark:text-blue-500" /> {editingId ? `Editar ${entity}` : `Cadastrar Novo ${entity}`}
               </h3>
             </div>
             <div className="p-6 grid grid-cols-2 gap-4">
@@ -449,16 +486,18 @@ const CustomerManager: React.FC = () => {
                     value={formData.cnpj}
                     onChange={e => setFormData({...formData, cnpj: e.target.value})}
                   />
-                  <button
-                    type="button"
-                    onClick={handleCnpjLookup}
-                    disabled={cnpjLookupLoading}
-                    aria-label="Consultar CNPJ"
-                    title="Consultar CNPJ"
-                    className="w-11 h-11 inline-flex items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-all disabled:opacity-60 disabled:hover:bg-blue-600"
-                  >
-                    {cnpjLookupLoading ? '...' : <Search size={18} />}
-                  </button>
+                  {mode !== 'produtores' && (
+                    <button
+                      type="button"
+                      onClick={handleCnpjLookup}
+                      disabled={cnpjLookupLoading}
+                      aria-label="Consultar CNPJ"
+                      title="Consultar CNPJ"
+                      className="w-11 h-11 inline-flex items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-all disabled:opacity-60 disabled:hover:bg-blue-600"
+                    >
+                      {cnpjLookupLoading ? '...' : <Search size={18} />}
+                    </button>
+                  )}
                 </div>
                 {cnpjLookupError && (
                   <div className="mt-1 text-[10px] font-bold text-red-500">{cnpjLookupError}</div>
@@ -581,7 +620,7 @@ const CustomerManager: React.FC = () => {
                 onClick={handleSave}
                 className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 dark:shadow-none"
               >
-                Salvar Cliente
+                Salvar {entity}
               </button>
             </div>
           </div>
@@ -602,7 +641,7 @@ const CustomerManager: React.FC = () => {
                   <X size={24} />
                 </button>
               </div>
-              <h3 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">Excluir Cliente</h3>
+              <h3 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">Excluir {entity}</h3>
               <p className="text-[10px] text-red-600 dark:text-red-400 font-black uppercase mt-2 tracking-widest">Ação Irreversível</p>
             </div>
 
@@ -619,7 +658,7 @@ const CustomerManager: React.FC = () => {
               <div className="flex items-start gap-3 p-4 rounded-2xl bg-yellow-50/60 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-900/30">
                 <div className="text-yellow-700 dark:text-yellow-300 pt-0.5"><Info size={18} /></div>
                 <div className="text-[11px] font-bold text-yellow-800 dark:text-yellow-200">
-                  Ao excluir este cliente, os romaneios vinculados podem ficar sem referência. Deseja continuar?
+                  Ao excluir este {entityLower}, os romaneios vinculados podem ficar sem referência. Deseja continuar?
                 </div>
               </div>
             </div>

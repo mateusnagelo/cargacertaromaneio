@@ -120,12 +120,24 @@ const ProductManager: React.FC = () => {
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
+      {loading && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-2xl rounded-[28px] px-8 py-8 flex flex-col items-center gap-4 w-[92%] max-w-sm">
+            <div className="w-14 h-14 rounded-full border-4 border-gray-200 dark:border-slate-700 border-t-green-600 dark:border-t-green-500 animate-spin" />
+            <div className="text-center">
+              <div className="text-[11px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500">Carregando</div>
+              <div className="text-sm font-black text-gray-900 dark:text-white mt-1">Atualizando estoque…</div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-black text-gray-800 dark:text-white uppercase tracking-tight">Estoque de Produtos</h1>
           <p className="text-gray-500 dark:text-slate-400">Cadastre os tipos de frutas e embalagens para o romaneio.</p>
         </div>
         <button 
+          type="button"
           onClick={openCreate}
           className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-200 dark:shadow-none"
         >
@@ -240,6 +252,7 @@ const ProductManager: React.FC = () => {
             </div>
             <div className="p-6 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 flex gap-3">
               <button 
+                type="button"
                 onClick={() => {
                   setIsAdding(false);
                   setEditingId(null);
@@ -249,7 +262,12 @@ const ProductManager: React.FC = () => {
                 Cancelar
               </button>
               <button 
-                onClick={handleSave}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleSave();
+                }}
                 className="flex-1 py-2.5 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 transition-all shadow-lg shadow-green-100 dark:shadow-none"
               >
                 Salvar
@@ -266,6 +284,7 @@ const ProductManager: React.FC = () => {
               <div className="flex items-center justify-between mb-4">
                 <div className="bg-red-600 p-2 rounded-xl text-white shadow-lg shadow-red-100 dark:shadow-none"><Trash2 size={20} /></div>
                 <button
+                  type="button"
                   onClick={() => setDeleteTarget(null)}
                   disabled={deleteLoading}
                   className="p-2 hover:bg-red-100/50 dark:hover:bg-slate-800 rounded-xl text-red-600 dark:text-red-400 transition-all disabled:opacity-60"
@@ -297,6 +316,7 @@ const ProductManager: React.FC = () => {
 
             <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 gap-4 shrink-0">
               <button
+                type="button"
                 onClick={() => setDeleteTarget(null)}
                 disabled={deleteLoading}
                 className="py-4 rounded-2xl text-gray-400 dark:text-slate-500 font-black uppercase tracking-widest text-[10px] disabled:opacity-60"
@@ -304,6 +324,7 @@ const ProductManager: React.FC = () => {
                 Cancelar
               </button>
               <button
+                type="button"
                 onClick={confirmDeleteProduct}
                 disabled={deleteLoading}
                 className="py-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest shadow-xl shadow-red-100 dark:shadow-none text-[10px] disabled:opacity-60 flex items-center justify-center gap-2"

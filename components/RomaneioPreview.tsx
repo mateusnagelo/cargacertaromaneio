@@ -9,12 +9,23 @@ interface RomaneioPreviewProps {
 }
 
 const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
+  const inferKind = (r?: Partial<RomaneioData> | null) => {
+    const k = String((r as any)?.kind ?? '').trim().toUpperCase();
+    if (k === 'COMPRA') return 'COMPRA';
+    if (k === 'VENDA') return 'VENDA';
+    const nature = String((r as any)?.natureOfOperation ?? '').trim().toUpperCase();
+    if (nature.includes('COMPRA')) return 'COMPRA';
+    return 'VENDA';
+  };
+  const kind = inferKind(data);
+  const showBanking = kind !== 'COMPRA' || !!data.bankingEnabled;
+
   return (
     <div className="print-container bg-white w-[210mm] min-h-[297mm] shadow-2xl mx-auto text-black border border-gray-300">
       <div className="print-scale p-10 text-[11px] leading-tight text-black flex flex-col min-h-[297mm]">
         <div className="flex justify-between items-start mb-6 border-b-2 border-black pb-2">
           <div className="flex-1">
-            <h1 className="text-2xl font-black uppercase text-center w-full">Romaneio de Venda</h1>
+            <h1 className="text-2xl font-black uppercase text-center w-full">{kind === 'COMPRA' ? 'Romaneio de Compra' : 'Romaneio de Venda'}</h1>
           </div>
           <div className="text-right whitespace-nowrap min-w-[120px]">
             <div className="flex justify-between">
@@ -26,7 +37,7 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
               <span>{formatDate(data.emissionDate)}</span>
             </div>
             <div className="flex justify-between mt-1">
-              <span className="font-bold uppercase">Data de Venda</span>
+              <span className="font-bold uppercase">{kind === 'COMPRA' ? 'Data de Compra' : 'Data de Venda'}</span>
               <span>{formatDate(data.saleDate)}</span>
             </div>
           </div>
@@ -58,7 +69,7 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
       {/* Client Information Grid */}
       <div className="grid grid-cols-2 gap-y-2 mb-6 border border-gray-300 p-3 rounded bg-gray-50/30">
         <div>
-          <span className="font-bold uppercase">Cliente:</span> {data.client.name}
+          <span className="font-bold uppercase">{kind === 'COMPRA' ? 'Produtor:' : 'Cliente:'}</span> {data.client.name}
         </div>
         <div>
           <span className="font-bold uppercase">CNPJ:</span> {data.client.cnpj}
@@ -190,42 +201,43 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
 
       {/* Customer Observations Dynamic */}
       <div className="mb-8 p-3 border border-gray-400 bg-gray-50 rounded italic text-[9px] leading-tight">
-        <h4 className="font-bold uppercase mb-1 underline">Observação ao Cliente</h4>
+        <h4 className="font-bold uppercase mb-1 underline">{kind === 'COMPRA' ? 'Observação ao Produtor' : 'Observação ao Cliente'}</h4>
         <div className="whitespace-pre-wrap">{data.observation}</div>
       </div>
 
-      {/* Banking Data */}
-      <div className="mt-auto bg-green-50 p-4 border-2 border-green-200 rounded-lg">
-        <h4 className="text-center font-black text-sm uppercase border-b border-green-800 mb-3 pb-1">Dados Bancários</h4>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-2">
-          <div className="flex justify-between">
-            <span className="font-bold uppercase">Banco:</span>
-            <span>{data.banking.bank}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-bold uppercase">Pix / CNPJ:</span>
-            <span>{data.banking.pix}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-bold uppercase">Tipo de Conta:</span>
-            <span>{data.banking.type}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-bold uppercase">Titular:</span>
-            <span className="font-bold">{data.banking.owner}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-bold uppercase">Agência:</span>
-            <span>{data.banking.agency}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-bold uppercase">Conta:</span>
-            <span>{data.banking.account}</span>
+      {showBanking && (
+        <div className="mt-auto bg-green-50 p-4 border-2 border-green-200 rounded-lg">
+          <h4 className="text-center font-black text-sm uppercase border-b border-green-800 mb-3 pb-1">Dados Bancários</h4>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+            <div className="flex justify-between">
+              <span className="font-bold uppercase">Banco:</span>
+              <span>{data.banking.bank}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-bold uppercase">Pix / CNPJ:</span>
+              <span>{data.banking.pix}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-bold uppercase">Tipo de Conta:</span>
+              <span>{data.banking.type}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-bold uppercase">Titular:</span>
+              <span className="font-bold">{data.banking.owner}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-bold uppercase">Agência:</span>
+              <span>{data.banking.agency}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-bold uppercase">Conta:</span>
+              <span>{data.banking.account}</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="mt-6 text-center border-t-2 border-black pt-2 relative">
+      <div className={`${showBanking ? 'mt-6' : 'mt-auto'} text-center border-t-2 border-black pt-2 relative`}>
         <p className="font-black uppercase text-xs tracking-widest">
           OBS: Após a realização do depósito enviar comprovantes ao vendedor responsável
         </p>

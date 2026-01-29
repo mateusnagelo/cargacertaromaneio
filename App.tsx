@@ -40,10 +40,13 @@ type Screen =
   | 'dashboard'
   | 'companies'
   | 'customers'
+  | 'producers'
   | 'products'
   | 'romaneios'
+  | 'romaneios_compra'
   | 'expenses'
   | 'tracking'
+  | 'tracking_compra'
   | 'observations'
   | 'reports'
   | 'settings';
@@ -98,7 +101,7 @@ const App: React.FC = () => {
       const next = prev.slice(0, -1);
       const previousScreen = next[next.length - 1] ?? 'dashboard';
       setActiveScreen(previousScreen);
-      if (previousScreen !== 'romaneios') {
+      if (previousScreen !== 'romaneios' && previousScreen !== 'romaneios_compra') {
         setSelectedRomaneio(null);
       }
       return next.length ? next : ['dashboard'];
@@ -264,15 +267,24 @@ const App: React.FC = () => {
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
   const computeRomaneioTotal = (r: RomaneioData) => {
+    const inferKind = (x?: Partial<RomaneioData> | null) => {
+      const k = String((x as any)?.kind ?? '').trim().toUpperCase();
+      if (k === 'COMPRA') return 'COMPRA';
+      if (k === 'VENDA') return 'VENDA';
+      const nature = String((x as any)?.natureOfOperation ?? '').trim().toUpperCase();
+      if (nature.includes('COMPRA')) return 'COMPRA';
+      return 'VENDA';
+    };
     const productsTotal = Array.isArray(r.products)
       ? r.products.reduce((acc, p) => acc + (Number(p?.quantity || 0) * Number(p?.unitValue || 0)), 0)
       : 0;
     const expensesTotal = Array.isArray(r.expenses)
       ? r.expenses.reduce((acc, e) => acc + (Number((e as any)?.total) || 0), 0)
       : 0;
-    const itemsTotal = productsTotal + expensesTotal;
+    const hasItems = (Array.isArray(r.products) && r.products.length > 0) || (Array.isArray(r.expenses) && r.expenses.length > 0);
+    const itemsTotal = inferKind(r) === 'COMPRA' ? productsTotal - expensesTotal : productsTotal + expensesTotal;
     const dbTotal = Number((r as any)?.montante_total ?? (r as any)?.total_value ?? 0) || 0;
-    return itemsTotal > 0 ? itemsTotal : dbTotal;
+    return hasItems ? itemsTotal : dbTotal;
   };
 
   const daysUntilDue = (isoDate: string) => {
@@ -340,10 +352,22 @@ const App: React.FC = () => {
                     navigateTo('romaneios');
                   }}
                 />;
+      case 'tracking_compra':
+        return (
+          <RomaneioTracking
+            kind="COMPRA"
+            onView={(romaneio) => {
+              setSelectedRomaneio(romaneio);
+              navigateTo('romaneios_compra');
+            }}
+          />
+        );
       case 'companies':
       return <CompanyManager />;
       case 'customers':
-        return <CustomerManager />;
+        return <CustomerManager key="customers-clientes" />;
+      case 'producers':
+        return <CustomerManager key="customers-produtores" mode="produtores" />;
       case 'products':
       return <ProductManager />;
       case 'observations':
@@ -357,9 +381,25 @@ const App: React.FC = () => {
       case 'romaneios':
         return (
           <RomaneioGenerator
+            key="romaneios-venda"
             onSave={() => {
               setSelectedRomaneio(null);
               navigateTo('tracking', { reset: true });
+            }}
+            onCreateNew={() => {
+              setSelectedRomaneio(null);
+            }}
+            initialData={selectedRomaneio}
+          />
+        );
+      case 'romaneios_compra':
+        return (
+          <RomaneioGenerator
+            key="romaneios-compra"
+            initialKind="COMPRA"
+            onSave={() => {
+              setSelectedRomaneio(null);
+              navigateTo('tracking_compra', { reset: true });
             }}
             onCreateNew={() => {
               setSelectedRomaneio(null);
@@ -390,11 +430,14 @@ const App: React.FC = () => {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-yellow-500' },
     { id: 'tracking', label: 'Histórico', icon: ClipboardList, color: 'text-purple-500' },
     { id: 'romaneios', label: 'Novo Romaneio', icon: FileText, color: 'text-orange-500' },
+    { id: 'tracking_compra', label: 'Histórico Compras', icon: ClipboardList, color: 'text-emerald-500' },
+    { id: 'romaneios_compra', label: 'Novo Romaneio Compra', icon: FileText, color: 'text-emerald-500' },
     { id: 'reports', label: 'Relatórios', icon: BarChart3, color: 'text-blue-500' },
     { id: 'products', label: 'Estoque', icon: Package, color: 'text-green-500' },
     { id: 'expenses', label: 'Despesas', icon: DollarSign, color: 'text-pink-500' },
     { id: 'observations', label: 'Observações', icon: MessageSquareText, color: 'text-cyan-500' },
     { id: 'customers', label: 'Clientes', icon: Users, color: 'text-blue-500' },
+    { id: 'producers', label: 'Produtores', icon: Users, color: 'text-emerald-500' },
     { id: 'companies', label: 'Empresas', icon: Building2, color: 'text-indigo-500' },
     { id: 'settings', label: 'Config. E-mail', icon: Settings, color: 'text-slate-500' },
   ];
@@ -613,7 +656,11 @@ const App: React.FC = () => {
               <button
                 key={item.id}
                 onClick={() => {
-                  navigateTo(item.id as Screen, item.id === 'tracking' || item.id === 'dashboard' ? { reset: true } : undefined);
+                  if (item.id === 'romaneios' || item.id === 'romaneios_compra') setSelectedRomaneio(null);
+                  navigateTo(
+                    item.id as Screen,
+                    item.id === 'tracking' || item.id === 'tracking_compra' || item.id === 'dashboard' ? { reset: true } : undefined
+                  );
                   setIsSidebarOpen(false);
                 }}
                 className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 group ${

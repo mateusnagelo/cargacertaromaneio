@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { RomaneioData, RomaneioStatus } from '../types';
+import { RomaneioData, RomaneioKind, RomaneioStatus } from '../types';
 import { 
   Search, 
   Calendar, 
@@ -30,9 +30,10 @@ import {
 
 interface Props {
   onView: (romaneio: RomaneioData) => void;
+  kind?: RomaneioKind;
 }
 
-const RomaneioTracking: React.FC<Props> = ({ onView }) => {
+const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioKind }) => {
   const [history, setHistory] = useState<RomaneioData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -110,6 +111,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
       const data = await getRomaneios(signal, {
         search: searchTerm,
         status: statusFilter,
+        kind,
         mode: 'list',
         dateField,
         fromDate: fromDate || undefined,
@@ -136,7 +138,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
       controller.abort();
       clearTimeout(t);
     };
-  }, [searchTerm, statusFilter, fromDate, toDate, dateField, limit]);
+  }, [searchTerm, statusFilter, fromDate, toDate, dateField, limit, kind]);
 
   const handleView = async (row: RomaneioData) => {
     try {
@@ -198,9 +200,10 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
     const expensesTotal = Array.isArray(r.expenses)
       ? r.expenses.reduce((eAcc, e) => eAcc + (Number(e.total) || 0), 0)
       : 0;
-    const totalFromItems = productsTotal + expensesTotal;
+    const hasItems = (Array.isArray(r.products) && r.products.length > 0) || (Array.isArray(r.expenses) && r.expenses.length > 0);
+    const totalFromItems = kind === 'COMPRA' ? productsTotal - expensesTotal : productsTotal + expensesTotal;
     const totalFromDb = Number((r as any)?.montante_total ?? (r as any)?.total_value ?? 0) || 0;
-    const total = totalFromItems > 0 ? totalFromItems : totalFromDb;
+    const total = hasItems ? totalFromItems : totalFromDb;
     const s = normalizeStatus((r as any)?.status);
     if (s === 'CONCLUÍDO') acc.concluido += total;
     if (s !== 'CONCLUÍDO' && s !== 'CANCELADO') acc.pendente += total;
@@ -223,22 +226,27 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
 
   const executeClone = async () => {
     if (!cloneTarget) return;
+    const kindUpper = String((cloneTarget as any)?.kind ?? '').trim().toUpperCase();
+    const cloneKind: RomaneioKind = kindUpper === 'COMPRA' ? 'COMPRA' : 'VENDA';
 
     // Construct the new romaneio object, omitting fields that the DB will generate
+    const clonedPartyId = cloneOptions.client && cloneTarget.customer ? cloneTarget.customer.id : undefined;
     const newRomaneioData: Omit<RomaneioData, 'id' | 'created_at'> = {
       ...cloneTarget,
       number: `CLONE-${cloneTarget.number}`, // Indicate it's a clone
+      kind: cloneKind,
       status: 'PENDENTE',
       emissionDate: toLocalDateInput(),
       saleDate: toLocalDateInput(),
       dueDate: '',
       // Ensure we are passing only IDs for relations
-      customer_id: cloneOptions.client && cloneTarget.customer ? cloneTarget.customer.id : undefined,
+      customer_id: cloneKind === 'COMPRA' ? null : clonedPartyId,
+      producer_id: cloneKind === 'COMPRA' ? clonedPartyId : null,
       company_id: cloneTarget.company ? cloneTarget.company.id : undefined,
       products: cloneOptions.products ? cloneTarget.products.map(p => ({ ...p, id: Math.random().toString(36).substr(2, 9) })) : [],
       expenses: cloneOptions.expenses ? cloneTarget.expenses.map(exp => ({ ...exp, id: Math.random().toString(36).substr(2, 9) })) : [],
       banking: cloneOptions.banking ? { ...cloneTarget.banking } : undefined,
-      natureOfOperation: cloneOptions.documentInfo ? cloneTarget.natureOfOperation : 'VENDA',
+      natureOfOperation: cloneOptions.documentInfo ? cloneTarget.natureOfOperation : cloneKind === 'COMPRA' ? 'COMPRA' : 'VENDA',
       terms: cloneOptions.documentInfo ? cloneTarget.terms : '30 DIAS',
       // Explicitly remove fields that should not be cloned directly
       customer: undefined,
@@ -264,24 +272,39 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 animate-in fade-in duration-500 pb-24 transition-colors">
+      {loading && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-2xl rounded-[28px] px-8 py-8 flex flex-col items-center gap-4 w-[92%] max-w-sm">
+            <div className="w-14 h-14 rounded-full border-4 border-gray-200 dark:border-slate-700 border-t-purple-600 dark:border-t-purple-500 animate-spin" />
+            <div className="text-center">
+              <div className="text-[11px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500">Carregando</div>
+              <div className="text-sm font-black text-gray-900 dark:text-white mt-1">Atualizando dados…</div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-xl md:text-2xl font-black text-gray-800 dark:text-white uppercase tracking-tight">Vendas Realizadas</h1>
-          <p className="text-xs md:text-sm text-gray-500 dark:text-slate-400">Gestão completa de pedidos e faturamento.</p>
+          <h1 className="text-xl md:text-2xl font-black text-gray-800 dark:text-white uppercase tracking-tight">
+            {kind === 'COMPRA' ? 'Compras Realizadas' : 'Vendas Realizadas'}
+          </h1>
+          <p className="text-xs md:text-sm text-gray-500 dark:text-slate-400">
+            {kind === 'COMPRA' ? 'Gestão completa de compras e pagamentos.' : 'Gestão completa de pedidos e faturamento.'}
+          </p>
         </div>
         
         <div className="flex gap-2 md:gap-4 w-full md:w-auto">
           <div className="flex-1 bg-white dark:bg-slate-900 p-4 rounded-[24px] border border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-3">
              <div className="bg-green-50 dark:bg-green-900/30 p-2 rounded-xl text-green-600"><TrendingUp size={18}/></div>
              <div>
-               <p className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase">Recebido</p>
+               <p className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase">{kind === 'COMPRA' ? 'Pago' : 'Recebido'}</p>
                <p className="text-xs md:text-sm font-black text-green-600 dark:text-green-400">{formatCurrency(totals.concluido)}</p>
              </div>
           </div>
           <div className="flex-1 bg-white dark:bg-slate-900 p-4 rounded-[24px] border border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-3">
              <div className="bg-yellow-50 dark:bg-yellow-900/30 p-2 rounded-xl text-yellow-600"><CreditCard size={18}/></div>
              <div>
-               <p className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase">A Receber</p>
+               <p className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase">{kind === 'COMPRA' ? 'A Pagar' : 'A Receber'}</p>
                <p className="text-xs md:text-sm font-black text-yellow-600 dark:text-yellow-400">{formatCurrency(totals.pendente)}</p>
              </div>
           </div>
@@ -294,7 +317,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={18} />
             <input 
               type="text" 
-              placeholder="Nº ou Cliente..." 
+              placeholder={kind === 'COMPRA' ? 'Nº ou Produtor...' : 'Nº ou Cliente...'} 
               className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 transition-all text-sm text-gray-900 dark:text-white"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
@@ -391,7 +414,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
             <thead>
               <tr className="text-left text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest border-b border-gray-50 dark:border-slate-800">
                 <th className="px-6 py-5">Identificação</th>
-                <th className="px-6 py-5">Cliente</th>
+                <th className="px-6 py-5">{kind === 'COMPRA' ? 'Produtor Rural' : 'Cliente'}</th>
                 <th className="px-6 py-5 text-center">Data</th>
                 <th className="px-6 py-5">Total</th>
                 <th className="px-6 py-5">Status</th>
@@ -402,9 +425,10 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
               {history.map(r => {
                 const pSum = Array.isArray(r.products) ? r.products.reduce((acc, p) => acc + (p.quantity * p.unitValue), 0) : 0;
                 const eSum = Array.isArray(r.expenses) ? r.expenses.reduce((acc, e) => acc + (Number(e.total) || 0), 0) : 0;
-                const totalFromItems = pSum + eSum;
+                const hasItems = (Array.isArray(r.products) && r.products.length > 0) || (Array.isArray(r.expenses) && r.expenses.length > 0);
+                const totalFromItems = kind === 'COMPRA' ? pSum - eSum : pSum + eSum;
                 const totalFromDb = Number((r as any)?.montante_total ?? (r as any)?.total_value ?? 0) || 0;
-                const total = totalFromItems > 0 ? totalFromItems : totalFromDb;
+                const total = hasItems ? totalFromItems : totalFromDb;
                 
                 return (
                   <tr key={r.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-800/50 transition-all">
@@ -478,13 +502,15 @@ const RomaneioTracking: React.FC<Props> = ({ onView }) => {
                  <div className="bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-100 dark:shadow-none"><Copy size={20} /></div>
                  <button onClick={() => setCloneTarget(null)} className="p-2 hover:bg-blue-100/50 dark:hover:bg-slate-800 rounded-xl text-blue-600 dark:text-blue-400 transition-all"><X size={24} /></button>
                </div>
-               <h3 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">Clonar Pedido</h3>
+               <h3 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">
+                 {kind === 'COMPRA' ? 'Clonar Compra' : 'Clonar Pedido'}
+               </h3>
                <p className="text-[10px] text-blue-600 dark:text-blue-400 font-black uppercase mt-2 tracking-widest">Personalizar Cópia</p>
             </div>
 
             <div className="p-6 md:p-8 space-y-4 overflow-y-auto">
               {[
-                { id: 'client', label: 'Dados do Cliente' },
+                { id: 'client', label: kind === 'COMPRA' ? 'Dados do Produtor' : 'Dados do Cliente' },
                 { id: 'products', label: 'Produtos' },
                 { id: 'expenses', label: 'Despesas' },
                 { id: 'banking', label: 'Dados Bancários' },

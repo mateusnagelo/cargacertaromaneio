@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import { RomaneioData, RomaneioStatus } from '../types';
+import { RomaneioData, RomaneioKind, RomaneioStatus } from '../types';
 
 const applyAbortSignal = (query: any, signal?: AbortSignal) => {
   if (signal && typeof query?.abortSignal === 'function') return query.abortSignal(signal);
@@ -68,6 +68,7 @@ export type RomaneioDateFilterField = 'EMISSAO' | 'CRIACAO';
 export type GetRomaneiosOptions = {
   search?: string;
   status?: RomaneioStatus | 'TODOS';
+  kind?: RomaneioKind | 'TODOS';
   companyId?: string;
   customerId?: string;
   minTotal?: number | null;
@@ -188,8 +189,10 @@ const mapRomaneioRow = (row: any, opts?: { applyPayload?: boolean; applyBackup?:
       delete fromPayload.created_at;
       delete fromPayload.company_id;
       delete fromPayload.customer_id;
+      delete fromPayload.producer_id;
       delete fromPayload.companyId;
       delete fromPayload.customerId;
+      delete fromPayload.producerId;
 
       const payloadNumber = fromPayload.number ?? fromPayload.guia ?? fromPayload.numero;
       if (merged.number !== undefined && merged.number !== null && merged.number !== '' && payloadNumber !== undefined) {
@@ -250,6 +253,9 @@ const mapRomaneioRow = (row: any, opts?: { applyPayload?: boolean; applyBackup?:
     }
   }
 
+  if (!merged.customer && merged.producer) merged.customer = merged.producer;
+  if (!merged.customer_id && merged.producer_id) merged.customer_id = merged.producer_id;
+  if (!merged.customerId && merged.customer_id) merged.customerId = String(merged.customer_id);
   if (!merged.client && merged.customer) merged.client = merged.customer;
   if (!merged.customer && merged.client) merged.customer = merged.client;
 
@@ -326,6 +332,18 @@ export const getRomaneios = async (signal?: AbortSignal, options?: GetRomaneiosO
     return int >= 1 ? int : null;
   };
   const limit = normalizeLimit(opts.limit);
+  const kindFilter: RomaneioKind | null =
+    (opts.kind as any) && opts.kind !== 'TODOS' ? (String(opts.kind).trim().toUpperCase() as RomaneioKind) : null;
+  const queryLimit = kindFilter && limit !== null ? Math.min(200, Math.max(limit, limit * 5)) : limit;
+
+  const inferKind = (r?: Partial<RomaneioData> | null): RomaneioKind => {
+    const k = String((r as any)?.kind ?? '').trim().toUpperCase();
+    if (k === 'COMPRA') return 'COMPRA';
+    if (k === 'VENDA') return 'VENDA';
+    const nature = String((r as any)?.natureOfOperation ?? '').trim().toUpperCase();
+    if (nature.includes('COMPRA')) return 'COMPRA';
+    return 'VENDA';
+  };
 
   const normalizeTotalNumber = (v: unknown) => {
     if (v === null || v === undefined) return null;
@@ -344,6 +362,7 @@ export const getRomaneios = async (signal?: AbortSignal, options?: GetRomaneiosO
       numberColumn?: string | null;
       companyIdColumn?: string | null;
       customerIdColumn?: string | null;
+      producerIdColumn?: string | null;
       dateColumn?: string | null;
       dateMode?: 'timestamp' | 'date_only';
       ignoreStatus?: boolean;
@@ -361,8 +380,13 @@ export const getRomaneios = async (signal?: AbortSignal, options?: GetRomaneiosO
     }
 
     if (opts.customerId) {
-      const col = config?.customerIdColumn ?? 'customer_id';
-      if (col) query = query.eq(col, String(opts.customerId));
+      if (kindFilter === 'COMPRA') {
+        const col = config?.producerIdColumn ?? 'producer_id';
+        if (col) query = query.eq(col, String(opts.customerId));
+      } else {
+        const col = config?.customerIdColumn ?? 'customer_id';
+        if (col) query = query.eq(col, String(opts.customerId));
+      }
     }
 
     if (hasDateFilter) {
@@ -390,79 +414,105 @@ export const getRomaneios = async (signal?: AbortSignal, options?: GetRomaneiosO
         const n = Number(searchDigits);
         if (Number.isFinite(n) && numberCol) query = query.eq(numberCol, n);
       } else if (withRelations) {
-        query = query.ilike('name', `%${search}%`, { foreignTable: 'customers' });
+        query = query.ilike('name', `%${search}%`, { foreignTable: kindFilter === 'COMPRA' ? 'producers' : 'customers' });
       }
     }
 
     query = query.order('id', { ascending: false });
-    if (limit !== null) query = query.limit(limit);
+    if (queryLimit !== null) query = query.limit(queryLimit);
 
     const { data, error } = await applyAbortSignal(query, signal);
     throwQueryError(error);
     return (data || []) as any[];
   };
 
-  const selects: Array<{ select: string; withRelations: boolean; applyPayload?: boolean }> =
-    mode === 'list'
-      ? [
+  const selects: Array<{ select: string; withRelations: boolean; applyPayload?: boolean }> = (() => {
+    if (mode === 'list') {
+      const base: Array<{ select: string; withRelations: boolean; applyPayload?: boolean }> = [
+        {
+          select:
+            'id,created_at,number,status,company_id,customer_id,total_value,payload,company:companies(id,name),customer:customers(id,name)',
+          withRelations: true,
+          applyPayload: true,
+        },
+        {
+          select:
+            'id,created_at,guia,numero,status,company_id,id_da_empresa,customer_id,id_do_cliente,total_value,payload,company:companies(id,name),customer:customers(id,name)',
+          withRelations: true,
+          applyPayload: true,
+        },
+        { select: 'id,created_at,number,status,company_id,customer_id,total_value,payload', withRelations: false, applyPayload: true },
+        {
+          select: 'id,created_at,guia,numero,status,company_id,id_da_empresa,customer_id,id_do_cliente,total_value,payload',
+          withRelations: false,
+          applyPayload: true,
+        },
+        { select: 'id,created_at,status,payload', withRelations: false, applyPayload: true },
+        { select: 'id,criado_em,status,payload', withRelations: false, applyPayload: true },
+        { select: 'id,created_at,guia,numero,status,montante_total,payload', withRelations: false, applyPayload: true },
+        { select: 'id,criado_em,guia,numero,status,montante_total,payload', withRelations: false, applyPayload: true },
+        {
+          select: 'id,created_at,number,status,company_id,customer_id,total_value,company:companies(id,name),customer:customers(id,name)',
+          withRelations: true,
+        },
+        {
+          select:
+            'id,created_at,guia,numero,status,company_id,id_da_empresa,customer_id,id_do_cliente,total_value,company:companies(id,name),customer:customers(id,name)',
+          withRelations: true,
+        },
+        { select: 'id,created_at,number,status,company_id,customer_id,total_value', withRelations: false },
+        { select: 'id,created_at,guia,numero,status,company_id,id_da_empresa,customer_id,id_do_cliente,total_value', withRelations: false },
+        {
+          select: 'id,created_at,company_id,customer_id,total_value,payload,company:companies(id,name),customer:customers(id,name)',
+          withRelations: true,
+          applyPayload: true,
+        },
+        {
+          select: 'id,created_at,id_da_empresa,id_do_cliente,total_value,payload,company:companies(id,name),customer:customers(id,name)',
+          withRelations: true,
+          applyPayload: true,
+        },
+        { select: 'id,created_at,company_id,customer_id,total_value,payload', withRelations: false, applyPayload: true },
+        { select: 'id,created_at,id_da_empresa,id_do_cliente,total_value,payload', withRelations: false, applyPayload: true },
+        { select: 'id,created_at,total_value,payload', withRelations: false, applyPayload: true },
+        { select: 'id,created_at,payload', withRelations: false, applyPayload: true },
+      ];
+
+      if (kindFilter === 'COMPRA') {
+        return [
           {
             select:
-              'id,created_at,number,status,company_id,customer_id,total_value,payload,company:companies(id,name),customer:customers(id,name)',
+              'id,created_at,number,status,company_id,producer_id,total_value,payload,company:companies(id,name),producer:producers(id,name)',
             withRelations: true,
             applyPayload: true,
           },
           {
             select:
-              'id,created_at,guia,numero,status,company_id,id_da_empresa,customer_id,id_do_cliente,total_value,payload,company:companies(id,name),customer:customers(id,name)',
+              'id,created_at,company_id,producer_id,total_value,payload,company:companies(id,name),producer:producers(id,name)',
             withRelations: true,
             applyPayload: true,
           },
-          {
-            select: 'id,created_at,number,status,company_id,customer_id,total_value,payload',
-            withRelations: false,
-            applyPayload: true,
-          },
-          {
-            select: 'id,created_at,guia,numero,status,company_id,id_da_empresa,customer_id,id_do_cliente,total_value,payload',
-            withRelations: false,
-            applyPayload: true,
-          },
-          { select: 'id,created_at,status,payload', withRelations: false, applyPayload: true },
-          { select: 'id,criado_em,status,payload', withRelations: false, applyPayload: true },
-          { select: 'id,created_at,guia,numero,status,montante_total,payload', withRelations: false, applyPayload: true },
-          { select: 'id,criado_em,guia,numero,status,montante_total,payload', withRelations: false, applyPayload: true },
-          {
-            select: 'id,created_at,number,status,company_id,customer_id,total_value,company:companies(id,name),customer:customers(id,name)',
-            withRelations: true,
-          },
-          {
-            select:
-              'id,created_at,guia,numero,status,company_id,id_da_empresa,customer_id,id_do_cliente,total_value,company:companies(id,name),customer:customers(id,name)',
-            withRelations: true,
-          },
-          { select: 'id,created_at,number,status,company_id,customer_id,total_value', withRelations: false },
-          { select: 'id,created_at,guia,numero,status,company_id,id_da_empresa,customer_id,id_do_cliente,total_value', withRelations: false },
-          {
-            select:
-              'id,created_at,company_id,customer_id,total_value,payload,company:companies(id,name),customer:customers(id,name)',
-            withRelations: true,
-            applyPayload: true,
-          },
-          {
-            select:
-              'id,created_at,id_da_empresa,id_do_cliente,total_value,payload,company:companies(id,name),customer:customers(id,name)',
-            withRelations: true,
-            applyPayload: true,
-          },
-          { select: 'id,created_at,company_id,customer_id,total_value,payload', withRelations: false, applyPayload: true },
-          { select: 'id,created_at,id_da_empresa,id_do_cliente,total_value,payload', withRelations: false, applyPayload: true },
-          { select: 'id,created_at,total_value,payload', withRelations: false, applyPayload: true },
-          { select: 'id,created_at,payload', withRelations: false, applyPayload: true },
-        ]
-      : [
-          { select: '*, company:companies(*), customer:customers(*)', withRelations: true, applyPayload: true },
-          { select: '*', withRelations: false, applyPayload: true },
+          { select: 'id,created_at,number,status,company_id,producer_id,total_value,payload', withRelations: false, applyPayload: true },
+          { select: 'id,created_at,company_id,producer_id,total_value,payload', withRelations: false, applyPayload: true },
+          ...base,
         ];
+      }
+
+      return base;
+    }
+
+    if (kindFilter === 'COMPRA') {
+      return [
+        { select: '*, company:companies(*), producer:producers(*), customer:customers(*)', withRelations: true, applyPayload: true },
+        { select: '*', withRelations: false, applyPayload: true },
+      ];
+    }
+
+    return [
+      { select: '*, company:companies(*), customer:customers(*)', withRelations: true, applyPayload: true },
+      { select: '*', withRelations: false, applyPayload: true },
+    ];
+  })();
 
   const totalColumns: Array<string | null> = minTotal !== null || maxTotal !== null ? ['total_value', 'montante_total', null] : [null];
   const numberColumns: Array<string | null> = search && searchIsNumber ? ['number', 'guia', 'numero', null] : [null];
@@ -483,6 +533,7 @@ export const getRomaneios = async (signal?: AbortSignal, options?: GetRomaneiosO
           ? ['id_do_cliente', 'customer_id', null]
           : ['customer_id', 'id_do_cliente', null]
       : [null];
+  const producerIdColumns: Array<string | null> = opts.customerId ? (isUuidLike(opts.customerId) ? ['producer_id', null] : ['producer_id', null]) : [null];
   const dateColumns: Array<string | null> = hasDateFilter
     ? dateField === 'CRIACAO'
       ? ['created_at', 'criado_em', null]
@@ -501,7 +552,7 @@ export const getRomaneios = async (signal?: AbortSignal, options?: GetRomaneiosO
       for (const totalColumn of totalColumns) {
         for (const numberColumn of numberColumns) {
           for (const companyIdColumn of companyIdColumns) {
-            for (const customerIdColumn of customerIdColumns) {
+              for (const customerIdColumn of (kindFilter === 'COMPRA' ? producerIdColumns : customerIdColumns)) {
               for (const dateColumn of dateColumns) {
                 for (const dateMode of dateModes) {
                   try {
@@ -509,7 +560,8 @@ export const getRomaneios = async (signal?: AbortSignal, options?: GetRomaneiosO
                       totalColumn,
                       numberColumn,
                       companyIdColumn,
-                      customerIdColumn,
+                        customerIdColumn: kindFilter === 'COMPRA' ? null : customerIdColumn,
+                        producerIdColumn: kindFilter === 'COMPRA' ? customerIdColumn : null,
                       dateColumn,
                       dateMode,
                       ignoreStatus,
@@ -559,11 +611,15 @@ export const getRomaneios = async (signal?: AbortSignal, options?: GetRomaneiosO
   const applyPayload = applyPayloadFromSelect;
   const applyBackup = mode === 'full';
   const mapped = rows.map((r) => mapRomaneioRow(r, { applyPayload, applyBackup }));
+  let filtered = mapped;
   if (opts.status && opts.status !== 'TODOS' && ignoreStatusUsed) {
     const desired = normalizeStatusInput(opts.status as RomaneioStatus);
-    return mapped.filter((r) => normalizeStatusInput((r as any)?.status as any) === desired);
+    filtered = filtered.filter((r) => normalizeStatusInput((r as any)?.status as any) === desired);
   }
-  return mapped;
+  if (kindFilter) {
+    filtered = filtered.filter((r) => inferKind(r) === kindFilter);
+  }
+  return limit !== null ? filtered.slice(0, limit) : filtered;
 };
 
 export const getRomaneioById = async (id: string, signal?: AbortSignal): Promise<RomaneioData> => {
@@ -591,7 +647,7 @@ export const getRomaneioById = async (id: string, signal?: AbortSignal): Promise
   }
 
   const selects: Array<{ select: string; withRelations: boolean }> = [
-    { select: '*, company:companies(*), customer:customers(*)', withRelations: true },
+    { select: '*, company:companies(*), customer:customers(*), producer:producers(*)', withRelations: true },
     { select: '*', withRelations: false },
   ];
 
@@ -696,11 +752,21 @@ export const addRomaneio = async (
     return { data, error: null as any };
   };
 
+  const inferKind = (r?: Partial<RomaneioData> | null): RomaneioKind => {
+    const k = String((r as any)?.kind ?? '').trim().toUpperCase();
+    if (k === 'COMPRA') return 'COMPRA';
+    if (k === 'VENDA') return 'VENDA';
+    const nature = String((r as any)?.natureOfOperation ?? '').trim().toUpperCase();
+    if (nature.includes('COMPRA')) return 'COMPRA';
+    return 'VENDA';
+  };
+
   const productsArr: any[] = Array.isArray((romaneio as any)?.products) ? ((romaneio as any).products as any[]) : [];
   const expensesArr: any[] = Array.isArray((romaneio as any)?.expenses) ? ((romaneio as any).expenses as any[]) : [];
-  const totalFromItems =
-    productsArr.reduce((acc, p) => acc + (Number(p?.quantity || 0) * Number(p?.unitValue || 0)), 0) +
-    expensesArr.reduce((acc, e) => acc + (Number(e?.total || 0) || 0), 0);
+  const productsTotal = productsArr.reduce((acc, p) => acc + (Number(p?.quantity || 0) * Number(p?.unitValue || 0)), 0);
+  const expensesTotal = expensesArr.reduce((acc, e) => acc + (Number(e?.total || 0) || 0), 0);
+  const kind = inferKind(romaneio as any);
+  const totalFromItems = kind === 'COMPRA' ? productsTotal - expensesTotal : productsTotal + expensesTotal;
   const weightFromItems = productsArr.reduce((acc, p) => acc + (Number(p?.quantity || 0) * Number(p?.kg || 0)), 0);
 
   const toOptionalNumber = (v: unknown) => {
@@ -734,7 +800,18 @@ export const addRomaneio = async (
 
   const baseNumber = toOptionalNumber((romaneio as any)?.number);
   const baseCompanyId = (romaneio as any)?.company_id ?? (romaneio as any)?.companyId ?? (romaneio as any)?.company?.id ?? null;
-  const baseCustomerId = (romaneio as any)?.customer_id ?? (romaneio as any)?.customerId ?? (romaneio as any)?.customer?.id ?? null;
+  const basePartyId =
+    kind === 'COMPRA'
+      ? ((romaneio as any)?.producer_id ??
+        (romaneio as any)?.producerId ??
+        (romaneio as any)?.producer?.id ??
+        (romaneio as any)?.customer_id ??
+        (romaneio as any)?.customerId ??
+        (romaneio as any)?.customer?.id ??
+        null)
+      : ((romaneio as any)?.customer_id ?? (romaneio as any)?.customerId ?? (romaneio as any)?.customer?.id ?? null);
+  const baseCustomerId = kind === 'COMPRA' ? null : basePartyId;
+  const baseProducerId = kind === 'COMPRA' ? basePartyId : null;
   const baseDate = romaneioForPayload?.emissionDate ?? romaneioForPayload?.saleDate ?? null;
   const baseObs = (romaneio as any)?.observation ?? null;
 
@@ -785,6 +862,7 @@ export const addRomaneio = async (
     status: statusNorm || 'PENDENTE',
     company_id: baseCompanyId,
     customer_id: baseCustomerId,
+    producer_id: baseProducerId,
     total_value: Number.isFinite(totalFromItems) ? totalFromItems : null,
     total_weight: Number.isFinite(weightFromItems) ? weightFromItems : null,
   };
@@ -946,11 +1024,21 @@ export const updateRomaneio = async (
   const userId = userRes?.user?.id;
   if (!userId) throw new Error('Usuário não autenticado.');
 
+  const inferKind = (r?: Partial<RomaneioData> | null): RomaneioKind => {
+    const k = String((r as any)?.kind ?? '').trim().toUpperCase();
+    if (k === 'COMPRA') return 'COMPRA';
+    if (k === 'VENDA') return 'VENDA';
+    const nature = String((r as any)?.natureOfOperation ?? '').trim().toUpperCase();
+    if (nature.includes('COMPRA')) return 'COMPRA';
+    return 'VENDA';
+  };
+
   const productsArr: any[] = Array.isArray((romaneio as any)?.products) ? ((romaneio as any).products as any[]) : [];
   const expensesArr: any[] = Array.isArray((romaneio as any)?.expenses) ? ((romaneio as any).expenses as any[]) : [];
-  const totalFromItems =
-    productsArr.reduce((acc, p) => acc + (Number(p?.quantity || 0) * Number(p?.unitValue || 0)), 0) +
-    expensesArr.reduce((acc, e) => acc + (Number(e?.total || 0) || 0), 0);
+  const productsTotal = productsArr.reduce((acc, p) => acc + (Number(p?.quantity || 0) * Number(p?.unitValue || 0)), 0);
+  const expensesTotal = expensesArr.reduce((acc, e) => acc + (Number(e?.total || 0) || 0), 0);
+  const kind = inferKind(romaneio as any);
+  const totalFromItems = kind === 'COMPRA' ? productsTotal - expensesTotal : productsTotal + expensesTotal;
   const weightFromItems = productsArr.reduce((acc, p) => acc + (Number(p?.quantity || 0) * Number(p?.kg || 0)), 0);
 
   const toOptionalNumber = (v: unknown) => {
@@ -983,7 +1071,18 @@ export const updateRomaneio = async (
 
   const baseNumber = toOptionalNumber((romaneio as any)?.number);
   const baseCompanyId = (romaneio as any)?.company_id ?? (romaneio as any)?.companyId ?? (romaneio as any)?.company?.id ?? null;
-  const baseCustomerId = (romaneio as any)?.customer_id ?? (romaneio as any)?.customerId ?? (romaneio as any)?.customer?.id ?? null;
+  const basePartyId =
+    kind === 'COMPRA'
+      ? ((romaneio as any)?.producer_id ??
+        (romaneio as any)?.producerId ??
+        (romaneio as any)?.producer?.id ??
+        (romaneio as any)?.customer_id ??
+        (romaneio as any)?.customerId ??
+        (romaneio as any)?.customer?.id ??
+        null)
+      : ((romaneio as any)?.customer_id ?? (romaneio as any)?.customerId ?? (romaneio as any)?.customer?.id ?? null);
+  const baseCustomerId = kind === 'COMPRA' ? null : basePartyId;
+  const baseProducerId = kind === 'COMPRA' ? basePartyId : null;
   const baseDate = (romaneio as any)?.emissionDate ?? (romaneio as any)?.saleDate ?? null;
   const issueDateIso = typeof baseDate === 'string' ? toLocalNoonIsoFromDateOnly(baseDate) : '';
   const dueDateOnly = toIsoDateOnly((romaneio as any)?.dueDate ?? (romaneio as any)?.due_date ?? '');
@@ -997,6 +1096,7 @@ export const updateRomaneio = async (
     status: statusPt,
     company_id: toOptionalNumber(baseCompanyId),
     customer_id: toOptionalNumber(baseCustomerId),
+    producer_id: toOptionalNumber(baseProducerId),
     issue_date: issueDateIso || baseDate,
     due_date: dueDateOnly,
     total_amount: Number.isFinite(totalFromItems) ? totalFromItems : null,
@@ -1046,6 +1146,7 @@ export const updateRomaneio = async (
     status: statusNorm || 'PENDENTE',
     company_id: toOptionalUuidString(baseCompanyId),
     customer_id: toOptionalUuidString(baseCustomerId),
+    producer_id: toOptionalUuidString(baseProducerId),
     issue_date: issueDateIso || baseDate,
     due_date: dueDateOnly,
     total_value: Number.isFinite(totalFromItems) ? totalFromItems : null,
@@ -1070,8 +1171,10 @@ export const updateRomaneio = async (
       delete fromPayload.created_at;
       delete fromPayload.company_id;
       delete fromPayload.customer_id;
+      delete fromPayload.producer_id;
       delete fromPayload.companyId;
       delete fromPayload.customerId;
+      delete fromPayload.producerId;
       delete fromPayload.number;
       delete fromPayload.status;
       Object.assign(merged, fromPayload);
@@ -1275,7 +1378,7 @@ export const updateRomaneio = async (
 
       if (msg.toLowerCase().includes('invalid input syntax') && msg.toLowerCase().includes('uuid')) {
         let changed = false;
-        for (const k of ['company_id', 'customer_id', 'owner_id']) {
+        for (const k of ['company_id', 'customer_id', 'producer_id', 'owner_id']) {
           if (k in payload) {
             const v = String(payload[k] ?? '').trim();
             if (!v || !isUuid(v)) {

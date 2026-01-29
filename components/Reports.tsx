@@ -3,7 +3,7 @@ import { BarChart3, FileDown, Filter, RotateCcw, Search } from 'lucide-react';
 import { getCompanies } from '../api/companies';
 import { getCustomers } from '../api/customers';
 import { getRomaneios } from '../api/romaneios';
-import { CompanyInfo, Customer, RomaneioData, RomaneioStatus } from '../types';
+import { CompanyInfo, Customer, RomaneioData, RomaneioKind, RomaneioStatus } from '../types';
 import { formatCurrency, formatDate, toLocalDateInput } from '../utils';
 
 type DateField = 'saleDate' | 'emissionDate';
@@ -27,6 +27,7 @@ const Reports: React.FC = () => {
   const [dateField, setDateField] = useState<DateField>('saleDate');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [kind, setKind] = useState<RomaneioKind | 'TODOS'>('TODOS');
   const [status, setStatus] = useState<RomaneioStatus | 'TODOS'>('TODOS');
   const [companyId, setCompanyId] = useState('');
   const [customerId, setCustomerId] = useState('');
@@ -68,21 +69,36 @@ const Reports: React.FC = () => {
       return Number.isFinite(n) ? n : null;
     };
 
-    const serverSearch = (() => {
-      const term = search.trim();
-      return /^\d+$/.test(term) ? term : '';
-    })();
+    const searchTerm = search.trim();
+    const serverSearch = /^\d+$/.test(searchTerm) ? searchTerm : '';
+    const minTotalValue = parseAmount(minTotal);
+    const maxTotalValue = parseAmount(maxTotal);
+    const hasAnyFilter =
+      status !== 'TODOS' ||
+      kind !== 'TODOS' ||
+      !!String(companyId || '').trim() ||
+      !!String(customerId || '').trim() ||
+      minTotalValue !== null ||
+      maxTotalValue !== null ||
+      !!serverSearch ||
+      !!String(fromDate || '').trim() ||
+      !!String(toDate || '').trim();
 
     const t = setTimeout(async () => {
       try {
         setLoading(true);
         const r = await getRomaneios(signal, {
           status,
+          kind,
           companyId: companyId || undefined,
           customerId: customerId || undefined,
-          minTotal: parseAmount(minTotal),
-          maxTotal: parseAmount(maxTotal),
+          minTotal: minTotalValue,
+          maxTotal: maxTotalValue,
           search: serverSearch || undefined,
+          fromDate: fromDate || undefined,
+          toDate: toDate || undefined,
+          dateField: 'EMISSAO',
+          limit: hasAnyFilter ? undefined : 5,
           mode: 'list',
         });
         setRomaneios(r);
@@ -99,7 +115,22 @@ const Reports: React.FC = () => {
       controller.abort();
       clearTimeout(t);
     };
-  }, [status, companyId, customerId, minTotal, maxTotal, search]);
+  }, [status, kind, companyId, customerId, minTotal, maxTotal, search, fromDate, toDate, dateField]);
+
+  const inferKind = (r?: Partial<RomaneioData> | null): RomaneioKind => {
+    const k = String((r as any)?.kind ?? '').trim().toUpperCase();
+    if (k === 'COMPRA') return 'COMPRA';
+    if (k === 'VENDA') return 'VENDA';
+    const nature = String((r as any)?.natureOfOperation ?? '').trim().toUpperCase();
+    if (nature.includes('COMPRA')) return 'COMPRA';
+    return 'VENDA';
+  };
+
+  const reportTitle =
+    kind === 'COMPRA' ? 'Relatório de Romaneios de Compra' : kind === 'VENDA' ? 'Relatório de Romaneios de Venda' : 'Relatório de Romaneios';
+
+  const clientHeader =
+    kind === 'COMPRA' ? 'Produtor' : kind === 'VENDA' ? 'Cliente' : 'Cliente / Produtor';
 
   const computeTotal = (r: RomaneioData) => {
     const productsTotal = Array.isArray(r.products)
@@ -108,9 +139,10 @@ const Reports: React.FC = () => {
     const expensesTotal = Array.isArray(r.expenses)
       ? r.expenses.reduce((acc, e) => acc + (Number((e as any)?.total) || 0), 0)
       : 0;
-    const itemsTotal = productsTotal + expensesTotal;
+    const hasItems = (Array.isArray(r.products) && r.products.length > 0) || (Array.isArray(r.expenses) && r.expenses.length > 0);
+    const itemsTotal = inferKind(r) === 'COMPRA' ? productsTotal - expensesTotal : productsTotal + expensesTotal;
     const dbTotal = Number((r as any)?.montante_total ?? (r as any)?.total_value ?? 0) || 0;
-    return itemsTotal > 0 ? itemsTotal : dbTotal;
+    return hasItems ? itemsTotal : dbTotal;
   };
 
   const getDateValue = (r: RomaneioData) => {
@@ -151,6 +183,7 @@ const Reports: React.FC = () => {
       .filter((r) => {
         if (!r) return false;
         if (status !== 'TODOS' && (r.status || 'PENDENTE') !== status) return false;
+        if (kind !== 'TODOS' && inferKind(r) !== kind) return false;
         if (companyId) {
           const rid = String((r.company as any)?.id ?? (r as any)?.company_id ?? '');
           if (rid !== String(companyId)) return false;
@@ -228,6 +261,7 @@ const Reports: React.FC = () => {
     setDateField('saleDate');
     setFromDate('');
     setToDate('');
+    setKind('TODOS');
     setStatus('TODOS');
     setCompanyId('');
     setCustomerId('');
@@ -292,6 +326,17 @@ const Reports: React.FC = () => {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8 animate-in fade-in duration-500 pb-24 transition-colors">
+      {loading && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 shadow-2xl rounded-[28px] px-8 py-8 flex flex-col items-center gap-4 w-[92%] max-w-sm">
+            <div className="w-14 h-14 rounded-full border-4 border-gray-200 dark:border-slate-700 border-t-blue-600 dark:border-t-blue-500 animate-spin" />
+            <div className="text-center">
+              <div className="text-[11px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500">Carregando</div>
+              <div className="text-sm font-black text-gray-900 dark:text-white mt-1">Gerando relatório…</div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-xl md:text-2xl font-black text-gray-800 dark:text-white uppercase tracking-tight flex items-center gap-2">
@@ -393,6 +438,18 @@ const Reports: React.FC = () => {
               </select>
             </div>
 
+            <div className="md:col-span-2">
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value as any)}
+                className="w-full px-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm text-gray-900 dark:text-white"
+              >
+                <option value="TODOS">Todos os tipos</option>
+                <option value="VENDA">Romaneio de Venda</option>
+                <option value="COMPRA">Romaneio de Compra</option>
+              </select>
+            </div>
+
             <div className="md:col-span-4">
               <select
                 value={companyId}
@@ -472,7 +529,7 @@ const Reports: React.FC = () => {
                   <tr className="text-left text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest border-b border-gray-50 dark:border-slate-800">
                     <th className="py-4 pr-6">Nº</th>
                     <th className="py-4 pr-6">Empresa</th>
-                    <th className="py-4 pr-6">Cliente</th>
+                    <th className="py-4 pr-6">{clientHeader}</th>
                     <th className="py-4 pr-6">Data</th>
                     <th className="py-4 pr-6">Status</th>
                     <th className="py-4 text-right">Total</th>
@@ -505,12 +562,13 @@ const Reports: React.FC = () => {
         <div ref={reportRef} className="bg-white text-black w-[210mm] p-6">
           <div className="flex items-start justify-between border-b border-black pb-3 mb-4">
             <div>
-              <div className="text-xl font-black uppercase">Relatório de Romaneios</div>
+              <div className="text-xl font-black uppercase">{reportTitle}</div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
                 {dateField === 'saleDate' ? 'Data de Venda' : 'Data de Emissão'}
                 {fromDate ? ` • De ${fromDate}` : ''}
                 {toDate ? ` • Até ${toDate}` : ''}
                 {status !== 'TODOS' ? ` • Status ${status}` : ''}
+                {kind !== 'TODOS' ? ` • Tipo ${kind}` : ''}
               </div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
                 {companyId ? `Empresa ${companies.find((c) => String(c.id) === String(companyId))?.name || companyId}` : 'Todas as empresas'}
@@ -544,7 +602,7 @@ const Reports: React.FC = () => {
               <tr className="border-y border-black bg-gray-100 text-left font-black uppercase">
                 <th className="py-2 px-2">Nº</th>
                 <th className="py-2 px-2">Empresa</th>
-                <th className="py-2 px-2">Cliente</th>
+                <th className="py-2 px-2">{clientHeader}</th>
                 <th className="py-2 px-2">Data</th>
                 <th className="py-2 px-2">Status</th>
                 <th className="py-2 px-2 text-right">Total</th>

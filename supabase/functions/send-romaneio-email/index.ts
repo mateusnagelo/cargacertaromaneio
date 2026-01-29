@@ -37,6 +37,14 @@ const formatCurrencyBr = (value: number) => {
 }
 
 const computeTotal = (payload: any, row: any) => {
+  const inferKind = () => {
+    const k = normalizeSpace(payload?.kind).toUpperCase()
+    if (k === 'COMPRA') return 'COMPRA'
+    if (k === 'VENDA') return 'VENDA'
+    const nature = normalizeSpace(payload?.natureOfOperation).toUpperCase()
+    if (nature.includes('COMPRA')) return 'COMPRA'
+    return 'VENDA'
+  }
   const products = Array.isArray(payload?.products) ? payload.products : Array.isArray(payload?.items) ? payload.items : []
   const expenses = Array.isArray(payload?.expenses)
     ? payload.expenses
@@ -45,10 +53,11 @@ const computeTotal = (payload: any, row: any) => {
       : []
   const productsTotal = products.reduce((acc: number, p: any) => acc + (Number(p?.quantity || 0) * Number(p?.unitValue || 0)), 0)
   const expensesTotal = expenses.reduce((acc: number, e: any) => acc + (Number(e?.total || e?.total_value || 0) || 0), 0)
-  const itemsTotal = productsTotal + expensesTotal
+  const hasItems = products.length > 0 || expenses.length > 0
+  const itemsTotal = inferKind() === 'COMPRA' ? productsTotal - expensesTotal : productsTotal + expensesTotal
   const dbTotal =
     Number(row?.montante_total ?? row?.total_value ?? row?.total_value ?? row?.total ?? row?.payload?.montante_total ?? 0) || 0
-  return itemsTotal > 0 ? itemsTotal : dbTotal
+  return hasItems ? itemsTotal : dbTotal
 }
 
 const buildEventKey = (type: NotificationType, romaneioId: string, dueDate: string) => {

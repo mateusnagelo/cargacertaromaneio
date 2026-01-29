@@ -1,5 +1,7 @@
 
 export type RomaneioStatus = 'PENDENTE' | 'CONCLUÍDO' | 'CANCELADO';
+export type RomaneioKind = 'VENDA' | 'COMPRA';
+export type CustomerRole = 'CLIENTE' | 'PRODUTOR_RURAL';
 
 export interface CompanyInfo {
   id: string;
@@ -42,6 +44,7 @@ export interface Customer {
   city: string;
   address: string;
   state: string;
+  role?: CustomerRole;
   cep?: string;
   tel?: string;
   email?: string;
@@ -108,6 +111,7 @@ export interface Expense {
 export interface RomaneioData {
   id: string;
   created_at?: string;
+  kind?: RomaneioKind;
   number: string;
   emissionDate: string;
   saleDate: string;
@@ -117,11 +121,14 @@ export interface RomaneioData {
   status: RomaneioStatus;
   companyId?: string;
   customerId?: string;
+  producerId?: string;
   company_id?: string;
   customer_id?: string;
+  producer_id?: string;
   observation: string;
   company: CompanyInfo;
   customer?: Customer;
+  producer?: Customer;
   client: {
     name: string;
     cnpj: string;
@@ -131,6 +138,7 @@ export interface RomaneioData {
     address: string;
     state: string;
   };
+  bankingEnabled?: boolean;
   banking: BankingInfo;
   products: Product[];
   expenses: Expense[];

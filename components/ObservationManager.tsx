@@ -130,8 +130,8 @@ const ObservationManager: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
           {filtered.map(o => (
-            <div key={o.id} className="group relative border border-gray-100 dark:border-slate-800 rounded-2xl p-6 hover:border-cyan-200 dark:hover:border-cyan-800 hover:shadow-xl transition-all bg-white dark:bg-slate-900">
-              <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+            <div key={o.id} className="group relative border border-gray-100 dark:border-slate-800 rounded-2xl p-6 pr-16 hover:border-cyan-200 dark:hover:border-cyan-800 hover:shadow-xl transition-all bg-white dark:bg-slate-900">
+              <div className="absolute top-4 right-4 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                 <button 
                   onClick={() => handleEdit(o)}
                   className="text-gray-400 dark:text-slate-500 hover:text-cyan-600 p-1.5"
@@ -148,11 +148,11 @@ const ObservationManager: React.FC = () => {
                 </button>
               </div>
               
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-3 mb-4 min-w-0">
                 <div className="bg-cyan-50 dark:bg-cyan-900/20 p-2 rounded-xl">
                   <FileText className="text-cyan-600 dark:text-cyan-400" size={20} />
                 </div>
-                <h3 className="font-black text-gray-800 dark:text-slate-100 uppercase tracking-tight max-w-[80%] truncate">{o.title}</h3>
+                <h3 className="font-black text-gray-800 dark:text-slate-100 uppercase tracking-tight flex-1 min-w-0 truncate">{o.title}</h3>
               </div>
               
               <p className="text-xs text-gray-500 dark:text-slate-400 leading-relaxed line-clamp-4 italic">

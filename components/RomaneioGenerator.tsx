@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CatalogProduct, CompanyInfo, Customer, Product, RomaneioData, Expense, ExpenseStock, RomaneioStatus, Observation } from '../types';
+import { CatalogProduct, CompanyInfo, Customer, CustomerRole, Product, RomaneioData, Expense, ExpenseStock, RomaneioKind, RomaneioStatus, Observation } from '../types';
 import { DEFAULT_ROMANEIO } from '../constants';
 import { FileDown, ChevronLeft, Edit3, Building2, Users, Package, Plus, DollarSign, Save, CheckCircle, X, AlertTriangle } from 'lucide-react';
 import { formatCurrency, formatDate, toLocalDateInput } from '../utils';
@@ -9,7 +9,7 @@ import RomaneioPreview from './RomaneioPreview';
 import ExpenseManager from './ExpenseManager';
 import ObservationManager from './ObservationManager';
 import { getCompanies } from '../api/companies';
-import { getCustomers } from '../api/customers';
+import { getCustomers, getProducers } from '../api/customers';
 import { getProducts } from '../api/products';
 import { getExpenses } from '../api/expenses';
 import { getObservations } from '../api/observations';
@@ -19,9 +19,10 @@ interface Props {
   onSave: (data: RomaneioData) => void;
   initialData?: RomaneioData | null;
   onCreateNew?: () => void;
+  initialKind?: RomaneioKind;
 }
 
-const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }) => {
+const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, initialKind = 'VENDA' as RomaneioKind }) => {
   const [view, setView] = useState<'edit' | 'preview'>('edit');
   
   // Data fetched from API
@@ -44,16 +45,30 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
 
   const effectiveView = isReadOnly ? 'preview' : view;
 
+  const inferKind = (r?: Partial<RomaneioData> | null): RomaneioKind => {
+    const k = String((r as any)?.kind ?? '').trim().toUpperCase();
+    if (k === 'COMPRA') return 'COMPRA';
+    if (k === 'VENDA') return 'VENDA';
+    const nature = String((r as any)?.natureOfOperation ?? '').trim().toUpperCase();
+    if (nature.includes('COMPRA')) return 'COMPRA';
+    return 'VENDA';
+  };
+
   const normalizeRomaneio = (input?: RomaneioData | null): RomaneioData => {
     const base: RomaneioData = { ...DEFAULT_ROMANEIO };
     const today = toLocalDateInput();
     base.emissionDate = today;
     base.saleDate = today;
+    base.kind = initialKind;
+    base.natureOfOperation = initialKind === 'COMPRA' ? 'COMPRA' : 'VENDA';
+    base.bankingEnabled = initialKind !== 'COMPRA';
     if (!input) return base;
     const merged: any = { ...base, ...input };
+    merged.kind = inferKind(input);
     merged.company = input.company ?? base.company;
     merged.client = input.client ?? base.client;
     merged.banking = (input as any).banking ?? (input.company?.banking ?? base.banking);
+    if (merged.bankingEnabled === undefined) merged.bankingEnabled = merged.kind !== 'COMPRA';
     merged.products = Array.isArray((input as any).products) ? (input as any).products : [];
     merged.expenses = Array.isArray((input as any).expenses) ? (input as any).expenses : [];
     if (!String(merged.emissionDate || '').trim()) merged.emissionDate = today;
@@ -77,7 +92,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
         setLoading(true);
         const [companiesData, customersData, productsData, expensesData, observationsData] = await Promise.all([
           getCompanies(signal),
-          getCustomers(signal),
+          initialKind === 'COMPRA' ? getProducers(signal) : getCustomers(signal),
           getProducts(signal),
           getExpenses(signal),
           getObservations(signal)
@@ -168,18 +183,25 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
 
   const activeCompany = romaneio.company;
   const activeCustomer = romaneio.customer;
+  const romaneioKind = inferKind(romaneio);
+
+  const customerRoleFilter: CustomerRole = romaneioKind === 'COMPRA' ? 'PRODUTOR_RURAL' : 'CLIENTE';
+  const customersForSelect = useMemo(() => {
+    return (customers || []).filter((c) => (c?.role ?? 'CLIENTE') === customerRoleFilter);
+  }, [customers, customerRoleFilter]);
 
   const totals = useMemo(() => {
     const productsTotal = (romaneio.products || []).reduce((acc, p) => acc + ((p.quantity || 0) * (p.unitValue || 0)), 0);
     const expensesTotal = (romaneio.expenses || []).reduce((acc, e) => acc + (Number(e.total) || 0), 0);
     const dbGrand = Number((romaneio as any)?.montante_total ?? (romaneio as any)?.total_value ?? 0) || 0;
-    const itemsGrand = productsTotal + expensesTotal;
+    const hasItems = (romaneio.products || []).length > 0 || (romaneio.expenses || []).length > 0;
+    const itemsGrand = romaneioKind === 'COMPRA' ? productsTotal - expensesTotal : productsTotal + expensesTotal;
     return {
       products: productsTotal,
       expenses: expensesTotal,
-      grand: itemsGrand > 0 ? itemsGrand : dbGrand
+      grand: hasItems ? itemsGrand : dbGrand
     };
-  }, [romaneio.products, romaneio.expenses, (romaneio as any)?.montante_total, (romaneio as any)?.total_value]);
+  }, [romaneio.products, romaneio.expenses, (romaneio as any)?.montante_total, (romaneio as any)?.total_value, romaneioKind]);
 
   const waitForPrintLayout = async (container: HTMLElement) => {
     const img = container.querySelector('img') as HTMLImageElement | null;
@@ -255,7 +277,8 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
   };
 
   const exportPdf = async () => {
-    const fileName = `Romaneio_${romaneio.number}_${romaneio.client?.name || 'Venda'}`.replaceAll(/[<>:"/\\|?*]+/g, '_');
+    const kindLabel = romaneioKind === 'COMPRA' ? 'Compra' : 'Venda';
+    const fileName = `Romaneio_${kindLabel}_${romaneio.number}_${romaneio.client?.name || kindLabel}`.replaceAll(/[<>:"/\\|?*]+/g, '_');
     document.documentElement.classList.add('pdf-export');
 
     const ensurePreview = async () => {
@@ -362,7 +385,8 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
             ...romaneio,
             status: forcedStatus || romaneio.status || initialData.status || 'PENDENTE',
             company_id: romaneio.company.id,
-            customer_id: romaneio.customer.id,
+            customer_id: romaneioKind === 'COMPRA' ? null : romaneio.customer.id,
+            producer_id: romaneioKind === 'COMPRA' ? romaneio.customer.id : null,
           } as any,
           controller.signal
         );
@@ -385,7 +409,8 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
       ...romaneio,
       status: forcedStatus || romaneio.status || 'PENDENTE',
       company_id: romaneio.company.id,
-      customer_id: romaneio.customer.id,
+      customer_id: romaneioKind === 'COMPRA' ? null : romaneio.customer.id,
+      producer_id: romaneioKind === 'COMPRA' ? romaneio.customer.id : null,
     };
 
     const controller = new AbortController();
@@ -450,13 +475,13 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
         <div>
            <div className="flex items-center gap-2">
              <h2 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight">
-               {initialData ? 'Reimpressão de Romaneio' : 'Emissor de Romaneio'}
+               {initialData ? 'Reimpressão de Romaneio' : romaneioKind === 'COMPRA' ? 'Emissor de Romaneio de Compra' : 'Emissor de Romaneio de Venda'}
              </h2>
              {initialData && (
                <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Modo Visualização</span>
              )}
            </div>
-           <p className="text-xs text-gray-400 dark:text-slate-500">Monte o pedido e registre no histórico.</p>
+           <p className="text-xs text-gray-400 dark:text-slate-500">{romaneioKind === 'COMPRA' ? 'Monte a compra e registre no histórico.' : 'Monte o pedido e registre no histórico.'}</p>
         </div>
         
         <div className="flex items-center gap-2">
@@ -470,7 +495,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
             }}
             className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-bold shadow-lg shadow-blue-100 dark:shadow-none"
           >
-            <Plus size={18} /> Criar Romaneio
+            <Plus size={18} /> {romaneioKind === 'COMPRA' ? 'Criar Compra' : 'Criar Venda'}
           </button>
           {!isReadOnly &&
             (view === 'edit' ? (
@@ -522,7 +547,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
             data={romaneio}
             setData={setRomaneio}
             companies={companies}
-            customers={customers}
+            customers={customersForSelect}
             stockProducts={stockProducts}
             expenseStock={expenseStock}
             observations={observations}
@@ -533,6 +558,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
             onCompanyCreated={handleCompanyCreated}
             onCustomerCreated={handleCustomerCreated}
             totals={totals}
+            kind={romaneioKind}
           />
         ) : (
           <div className="flex justify-center">
@@ -658,7 +684,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-widest">Atenção</h3>
-                <p className="text-sm text-gray-600 dark:text-slate-300 mt-1">Selecione uma empresa e um cliente antes de salvar.</p>
+                <p className="text-sm text-gray-600 dark:text-slate-300 mt-1">{romaneioKind === 'COMPRA' ? 'Selecione uma empresa e um produtor rural antes de salvar.' : 'Selecione uma empresa e um cliente antes de salvar.'}</p>
               </div>
               <button
                 type="button"
@@ -686,7 +712,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
             <div className="flex gap-8 items-center">
                <div>
-                 <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Total da Venda</span>
+                 <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest block mb-1">{romaneioKind === 'COMPRA' ? 'Total da Compra' : 'Total da Venda'}</span>
                  <p className="text-2xl font-black text-green-600 dark:text-green-400 leading-none">{formatCurrency(totals.grand)}</p>
                </div>
                <div className="hidden sm:block border-l border-gray-100 dark:border-slate-800 pl-8">
@@ -701,7 +727,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew }
               disabled={saveLoading}
               className="bg-green-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-green-700 shadow-xl shadow-green-100 dark:shadow-none transition-all flex items-center gap-3 disabled:opacity-60"
             >
-              <CheckCircle size={20} /> Concluir Venda
+              <CheckCircle size={20} /> {romaneioKind === 'COMPRA' ? 'Concluir Compra' : 'Concluir Venda'}
             </button>
           </div>
         </div>

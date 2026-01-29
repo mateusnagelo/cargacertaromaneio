@@ -11,6 +11,7 @@ Nota 2: Em caso de depósito em conta, enviar via Whatsapp ou e-mail o comprovan
 
 export const DEFAULT_ROMANEIO: RomaneioData = {
   id: "",
+  kind: "VENDA",
   companyId: "",
   customerId: "",
   number: "",
@@ -59,6 +60,7 @@ export const DEFAULT_ROMANEIO: RomaneioData = {
     { id: 'e4', code: '692', description: 'PAPELÕES', quantity: '0', unitValue: '0', total: 0 },
     { id: 'e5', code: '701', description: 'OUTRAS', quantity: '/', unitValue: '/', total: 0 }
   ],
+  bankingEnabled: true,
   banking: {
     bank: "BANCO EXEMPLO S.A",
     pix: "00.000.000/0001-00",

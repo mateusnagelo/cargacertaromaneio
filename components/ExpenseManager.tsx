@@ -137,8 +137,8 @@ const ExpenseManager: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
           {filtered.map(e => (
-            <div key={e.id} className="group relative border border-gray-100 dark:border-slate-800 rounded-2xl p-5 hover:border-pink-200 dark:hover:border-pink-800 hover:shadow-xl hover:shadow-pink-50 dark:hover:shadow-none transition-all bg-white dark:bg-slate-900">
-              <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+            <div key={e.id} className="group relative border border-gray-100 dark:border-slate-800 rounded-2xl p-5 pr-16 hover:border-pink-200 dark:hover:border-pink-800 hover:shadow-xl hover:shadow-pink-50 dark:hover:shadow-none transition-all bg-white dark:bg-slate-900">
+              <div className="absolute top-4 right-4 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                 <button
                   onClick={() => openEdit(e)}
                   className="text-gray-300 dark:text-slate-700 hover:text-pink-600 p-1.5"
@@ -155,13 +155,13 @@ const ExpenseManager: React.FC = () => {
                 </button>
               </div>
               
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-3 mb-4 min-w-0">
                 <div className="bg-pink-50 dark:bg-pink-900/20 p-3 rounded-xl">
                   <Tag className="text-pink-500 dark:text-pink-400" size={24} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Cód. {e.code}</span>
-                  <h3 className="font-black text-gray-800 dark:text-slate-100 leading-tight uppercase">{e.description}</h3>
+                  <h3 className="font-black text-gray-800 dark:text-slate-100 leading-tight uppercase truncate">{e.description}</h3>
                 </div>
               </div>
 

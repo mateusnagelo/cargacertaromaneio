@@ -1,7 +1,7 @@
 {
   "name": "cargacerta---sistema-de-romaneio-de-venda",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.1.2",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -2,6 +2,7 @@
 import React from 'react';
 import { RomaneioData } from '../types';
 import { formatCurrency, formatDate } from '../utils';
+import pkg from '../package.json';
 
 interface RomaneioPreviewProps {
   data: RomaneioData;
@@ -242,7 +243,7 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
           OBS: Após a realização do depósito enviar comprovantes ao vendedor responsável
         </p>
         <div className="print-footer-note absolute -bottom-6 right-0 text-[7px] text-gray-400 italic">
-          Desenvolvido por VisionApp - Mateus Angelo vr 1.1.1
+          Desenvolvido por VisionApp - Mateus Angelo vr {String((pkg as any)?.version || '').trim() || '-'}
         </div>
       </div>
       </div>

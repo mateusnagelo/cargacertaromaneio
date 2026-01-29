@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import mapaBrasil from '../mapabrasil.png';
+import pkg from '../package.json';
 
 interface LoginProps {
   onLogin: () => void;
@@ -393,7 +394,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, forcePasswordReset, onPasswordRe
                 <ShieldCheck size={16} className="text-green-500" />
                 <span className="text-[10px] font-bold uppercase tracking-tight">Criptografia Ativa</span>
              </div>
-             <span className="text-[10px] font-bold uppercase tracking-tight">v1.1.1</span>
+             <span className="text-[10px] font-bold uppercase tracking-tight">v{String((pkg as any)?.version || '').trim() || '-'}</span>
           </div>
         </div>
 

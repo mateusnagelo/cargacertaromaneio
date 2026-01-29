@@ -35,6 +35,7 @@ import Dashboard from './components/Dashboard';
 import { getRomaneios, sendRomaneioEmailNotification } from './api/romaneios';
 import { supabase } from './supabaseClient';
 import { formatCurrency, formatDate } from './utils';
+import pkg from './package.json';
 
 type Screen =
   | 'dashboard'
@@ -697,7 +698,7 @@ const App: React.FC = () => {
               <p className="text-[10px] font-medium text-gray-400 dark:text-slate-500 italic">
                 Desenvolvido por <span className="font-bold text-gray-500 dark:text-slate-400 not-italic">VisionApp - Mateus Angelo</span>
               </p>
-              <p className="text-[9px] text-gray-300 dark:text-slate-600 font-bold uppercase tracking-widest mt-1">vr 1.1.1</p>
+              <p className="text-[9px] text-gray-300 dark:text-slate-600 font-bold uppercase tracking-widest mt-1">vr {String((pkg as any)?.version || '').trim() || '-'}</p>
             </div>
           </div>
         </div>

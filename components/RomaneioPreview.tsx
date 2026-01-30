@@ -178,7 +178,12 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
               <td className="py-1 border-r border-black">{e.code}</td>
               <td className="py-1 border-r border-black text-left px-2 uppercase font-bold">{e.description}</td>
               <td className="py-1 border-r border-black">{e.quantity}</td>
-              <td className="py-1 border-r border-black">{e.unitValue === '/' ? '/' : formatCurrency(parseFloat(e.unitValue) || 0)}</td>
+              <td className="py-1 border-r border-black">
+                {(() => {
+                  const unit = String((e as any)?.unitValue ?? '').trim();
+                  return unit === '/' || unit === '' ? '/' : formatCurrency(parseFloat(unit) || 0);
+                })()}
+              </td>
               <td className="py-1 text-right px-4">
                 {e.total === 0 ? 'R$ -' : formatCurrency(e.total)}
               </td>

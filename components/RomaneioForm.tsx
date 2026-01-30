@@ -434,12 +434,22 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
       ...data,
       expenses: currentExpenses.map(e => {
         if (e.id === id) {
-          const updated = { ...e, [field]: value };
+          let nextValue: any = value;
+          if ((field === 'quantity' || field === 'unitValue') && typeof value === 'string') {
+            nextValue = value.replace(/\//g, '').trimStart();
+          }
+          const updated = { ...e, [field]: nextValue };
           if (field === 'total') {
             updated.total = parseDecimal(value);
           }
           if (field === 'quantity' || field === 'unitValue') {
-            updated.total = parseDecimal(updated.quantity) * parseDecimal(updated.unitValue);
+            const qtyRaw = String((updated as any)?.quantity ?? '').trim();
+            const unitRaw = String((updated as any)?.unitValue ?? '').trim();
+            const qtyMissing = qtyRaw === '/' || qtyRaw === '';
+            const unitMissing = unitRaw === '/' || unitRaw === '';
+            const qty = qtyMissing ? 1 : parseDecimal(qtyRaw);
+            const unit = unitMissing ? 0 : parseDecimal(unitRaw);
+            updated.total = qtyMissing ? unit : qty * unit;
           }
           return updated;
         }

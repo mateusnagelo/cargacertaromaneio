@@ -54,6 +54,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
   };
   const kind = (kindProp as any) || inferKind(data);
   const customerLabel = kind === 'COMPRA' ? 'Produtor Rural' : 'Cliente';
+  const showObservationFields = kind !== 'COMPRA' || !!data.observationEnabled;
   const showBankingFields = kind !== 'COMPRA' || !!data.bankingEnabled;
 
   const filteredCustomers = useMemo(() => {
@@ -638,7 +639,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
             </select>
           </div>
           <div className="sm:col-span-2">
-            <label className={labelClasses}>CNPJ / CPF</label>
+            <label className={labelClasses}>{kind === 'COMPRA' ? 'CPF' : 'CNPJ / CPF'}</label>
             <input type="text" value={data.client.cnpj} onChange={(e) => updateField('client.cnpj', e.target.value)} className={inputClasses} />
           </div>
           <div className="sm:col-span-2 md:col-span-1">
@@ -777,10 +778,21 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
             </h2>
           </div>
           <div className="flex items-center gap-2">
-            {observations.length > 0 && (
+            {kind === 'COMPRA' && (
+              <label className="flex items-center gap-2 text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest select-none">
+                <input
+                  type="checkbox"
+                  checked={!!data.observationEnabled}
+                  onChange={(e) => updateField('observationEnabled', e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                />
+                Incluir
+              </label>
+            )}
+            {showObservationFields && observations.length > 0 && (
               <>
                 <span className="text-[9px] font-black text-gray-400 uppercase">Aplicar Modelo:</span>
-                <select 
+                <select
                   className="p-2 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-[10px] font-bold outline-none text-cyan-600 uppercase"
                   onChange={(e) => selectObservation(e.target.value)}
                   defaultValue=""
@@ -792,7 +804,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
                 </select>
               </>
             )}
-            {onOpenObservationManager && (
+            {showObservationFields && onOpenObservationManager && (
               <button
                 type="button"
                 onClick={onOpenObservationManager}
@@ -804,14 +816,18 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
             )}
           </div>
         </div>
-        <textarea 
-          rows={6}
-          className="w-full p-4 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-3xl outline-none focus:ring-2 focus:ring-cyan-500 text-xs text-gray-700 dark:text-slate-300 transition-all leading-relaxed"
-          placeholder="Texto que aparecerá no rodapé do PDF..."
-          value={data.observation}
-          onChange={(e) => updateField('observation', e.target.value)}
-        />
-        <p className="mt-2 text-[9px] text-gray-400 italic">Este texto é salvo apenas para este romaneio. Use o módulo 'Observações' para salvar modelos permanentes.</p>
+        {showObservationFields && (
+          <>
+            <textarea 
+              rows={6}
+              className="w-full p-4 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-3xl outline-none focus:ring-2 focus:ring-cyan-500 text-xs text-gray-700 dark:text-slate-300 transition-all leading-relaxed"
+              placeholder="Texto que aparecerá no rodapé do PDF..."
+              value={data.observation}
+              onChange={(e) => updateField('observation', e.target.value)}
+            />
+            <p className="mt-2 text-[9px] text-gray-400 italic">Este texto é salvo apenas para este romaneio. Use o módulo 'Observações' para salvar modelos permanentes.</p>
+          </>
+        )}
       </section>
 
       {/* Banking */}

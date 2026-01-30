@@ -138,6 +138,7 @@ export interface RomaneioData {
     address: string;
     state: string;
   };
+  observationEnabled?: boolean;
   bankingEnabled?: boolean;
   banking: BankingInfo;
   products: Product[];

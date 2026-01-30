@@ -54,6 +54,7 @@ type Screen =
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
   const [forcePasswordReset, setForcePasswordReset] = useState(false);
   const [activeScreen, setActiveScreen] = useState<Screen>('dashboard');
   const [selectedRomaneio, setSelectedRomaneio] = useState<RomaneioData | null>(null);
@@ -166,14 +167,17 @@ const App: React.FC = () => {
     supabase.auth.getSession().then(({ data }) => {
       if (!isMounted) return;
       setIsAuthenticated(!!data.session);
+      setUserEmail(data.session?.user?.email || '');
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setForcePasswordReset(true);
         setIsAuthenticated(false);
+        setUserEmail('');
         return;
       }
       setIsAuthenticated(!!session);
+      setUserEmail(session?.user?.email || '');
     });
     return () => {
       isMounted = false;
@@ -307,6 +311,7 @@ const App: React.FC = () => {
     } catch {
     } finally {
       setIsAuthenticated(false);
+      setUserEmail('');
       setForcePasswordReset(false);
       setSelectedRomaneio(null);
       setActiveScreen('dashboard');
@@ -451,7 +456,12 @@ const App: React.FC = () => {
           <div className="bg-yellow-400 p-1.5 rounded-lg">
             <LayoutDashboard size={20} className="text-yellow-900" />
           </div>
-          <span className="font-black text-gray-800 dark:text-white tracking-tight">CARGACERTA</span>
+          <div className="min-w-0">
+            <div className="font-black text-gray-800 dark:text-white tracking-tight leading-tight">CARGACERTA</div>
+            <div className="text-[10px] font-bold text-gray-400 dark:text-slate-500 truncate max-w-[170px] leading-tight">
+              {userEmail || '-'}
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button 
@@ -632,7 +642,12 @@ const App: React.FC = () => {
               <div className="bg-yellow-400 p-2 rounded-xl shadow-lg shadow-yellow-100 dark:shadow-none">
                 <LayoutDashboard size={24} className="text-yellow-900" />
               </div>
-              <span className="font-black text-gray-800 dark:text-white tracking-tight text-lg">CARGACERTA</span>
+              <div className="min-w-0">
+                <div className="font-black text-gray-800 dark:text-white tracking-tight text-lg leading-tight">CARGACERTA</div>
+                <div className="text-[10px] font-bold text-gray-400 dark:text-slate-500 truncate max-w-[170px] leading-tight">
+                  {userEmail || '-'}
+                </div>
+              </div>
             </div>
             <button 
               onClick={() => setIsSidebarOpen(false)}

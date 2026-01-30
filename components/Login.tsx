@@ -396,6 +396,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, forcePasswordReset, onPasswordRe
              </div>
              <span className="text-[10px] font-bold uppercase tracking-tight">v{String((pkg as any)?.version || '').trim() || '-'}</span>
           </div>
+
+          <div className="mt-4 text-center">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Suporte</p>
+            <p className="text-[11px] font-bold text-gray-500">Mateus Ângelo · (77) 99950 9903</p>
+          </div>
         </div>
 
             <p className="text-center mt-10 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">

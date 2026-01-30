@@ -22,6 +22,7 @@ export const DEFAULT_ROMANEIO: RomaneioData = {
   natureOfOperation: "VENDA",
   terms: "30 DIAS",
   observation: DEFAULT_OBSERVATION,
+  observationEnabled: true,
   company: {
     id: "",
     name: "CARGACERTA LOGÍSTICA E DISTRIBUIÇÃO",

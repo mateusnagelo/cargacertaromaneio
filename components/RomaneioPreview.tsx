@@ -19,6 +19,7 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
     return 'VENDA';
   };
   const kind = inferKind(data);
+  const showObservation = kind !== 'COMPRA' || !!data.observationEnabled;
   const showBanking = kind !== 'COMPRA' || !!data.bankingEnabled;
 
   return (
@@ -73,7 +74,7 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
           <span className="font-bold uppercase">{kind === 'COMPRA' ? 'Produtor:' : 'Cliente:'}</span> {data.client.name}
         </div>
         <div>
-          <span className="font-bold uppercase">CNPJ:</span> {data.client.cnpj}
+          <span className="font-bold uppercase">{kind === 'COMPRA' ? 'CPF:' : 'CNPJ:'}</span> {data.client.cnpj}
         </div>
         <div>
           <span className="font-bold uppercase">Bairro:</span> {data.client.neighborhood}
@@ -201,10 +202,12 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
       </div>
 
       {/* Customer Observations Dynamic */}
-      <div className="mb-8 p-3 border border-gray-400 bg-gray-50 rounded italic text-[9px] leading-tight">
-        <h4 className="font-bold uppercase mb-1 underline">{kind === 'COMPRA' ? 'Observação ao Produtor' : 'Observação ao Cliente'}</h4>
-        <div className="whitespace-pre-wrap">{data.observation}</div>
-      </div>
+      {showObservation && (
+        <div className="mb-8 p-3 border border-gray-400 bg-gray-50 rounded italic text-[9px] leading-tight">
+          <h4 className="font-bold uppercase mb-1 underline">{kind === 'COMPRA' ? 'Observação ao Produtor' : 'Observação ao Cliente'}</h4>
+          <div className="whitespace-pre-wrap">{data.observation}</div>
+        </div>
+      )}
 
       {showBanking && (
         <div className="mt-auto bg-green-50 p-4 border-2 border-green-200 rounded-lg">
@@ -239,9 +242,11 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
       )}
 
       <div className={`${showBanking ? 'mt-6' : 'mt-auto'} text-center border-t-2 border-black pt-2 relative`}>
-        <p className="font-black uppercase text-xs tracking-widest">
-          OBS: Após a realização do depósito enviar comprovantes ao vendedor responsável
-        </p>
+        {kind !== 'COMPRA' && (
+          <p className="font-black uppercase text-xs tracking-widest">
+            OBS: Após a realização do depósito enviar comprovantes ao vendedor responsável
+          </p>
+        )}
         <div className="print-footer-note absolute -bottom-6 right-0 text-[7px] text-gray-400 italic">
           Desenvolvido por VisionApp - Mateus Angelo vr {String((pkg as any)?.version || '').trim() || '-'}
         </div>

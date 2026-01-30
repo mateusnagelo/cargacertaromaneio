@@ -61,6 +61,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
     base.saleDate = today;
     base.kind = initialKind;
     base.natureOfOperation = initialKind === 'COMPRA' ? 'COMPRA' : 'VENDA';
+    base.observationEnabled = initialKind !== 'COMPRA';
     base.bankingEnabled = initialKind !== 'COMPRA';
     if (!input) return base;
     const merged: any = { ...base, ...input };
@@ -68,6 +69,9 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
     merged.company = input.company ?? base.company;
     merged.client = input.client ?? base.client;
     merged.banking = (input as any).banking ?? (input.company?.banking ?? base.banking);
+    if (merged.observationEnabled === undefined) {
+      merged.observationEnabled = merged.kind !== 'COMPRA' ? true : !!String(merged.observation || '').trim();
+    }
     if (merged.bankingEnabled === undefined) merged.bankingEnabled = merged.kind !== 'COMPRA';
     merged.products = Array.isArray((input as any).products) ? (input as any).products : [];
     merged.expenses = Array.isArray((input as any).expenses) ? (input as any).expenses : [];

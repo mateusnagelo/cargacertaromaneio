@@ -573,8 +573,51 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
           </div>
           <div>
             <label className={labelClasses}>Vencimento</label>
-            <input type="date" value={data.dueDate} onChange={(e) => updateField('dueDate', e.target.value)} className={inputClasses} />
+            <input
+              type="date"
+              required={kind === 'COMPRA'}
+              value={data.dueDate}
+              onChange={(e) => updateField('dueDate', e.target.value)}
+              className={inputClasses}
+            />
           </div>
+          {kind === 'COMPRA' && (
+            <div>
+              <label className={labelClasses}>Status do Pagamento</label>
+              <select
+                required
+                value={String((data as any).paymentStatus || '')}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  updateField('paymentStatus', next);
+                  if (String(next).trim().toUpperCase() !== 'PAGO') {
+                    updateField('paymentDate', '');
+                  }
+                }}
+                className={`${inputClasses} font-bold`}
+              >
+                <option value="" disabled>
+                  Selecione...
+                </option>
+                <option value="EM_ABERTO">Em aberto</option>
+                <option value="PARCIAL">Parcial</option>
+                <option value="PAGO">Pago</option>
+              </select>
+            </div>
+          )}
+          {kind === 'COMPRA' && (
+            <div>
+              <label className={labelClasses}>Data do Pagamento</label>
+              <input
+                type="date"
+                required={String((data as any).paymentStatus || '').trim().toUpperCase() === 'PAGO'}
+                disabled={String((data as any).paymentStatus || '').trim().toUpperCase() !== 'PAGO'}
+                value={String((data as any).paymentDate || '')}
+                onChange={(e) => updateField('paymentDate', e.target.value)}
+                className={inputClasses}
+              />
+            </div>
+          )}
           <div>
             <label className={labelClasses}>Natureza</label>
             <input type="text" value={data.natureOfOperation} onChange={(e) => updateField('natureOfOperation', e.target.value.toUpperCase())} className={inputClasses} />

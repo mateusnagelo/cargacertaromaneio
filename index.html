@@ -4,12 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CargaCerta - Romaneios Profissionais</title>
+    <title>CargaCerta - Romaneios & Logística</title>
     <meta name="theme-color" content="#facc15">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CargaCerta">
     <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="/logocargacerta.png?v=2">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -121,6 +122,30 @@
         }
         html.pdf-export .p-3 {
             padding: 2.5mm !important;
+        }
+
+        .cc-loading-progress-track {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.25);
+            overflow: hidden;
+        }
+        .cc-loading-progress-bar {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 40%;
+            background: rgba(255, 255, 255, 0.95);
+            animation: cc-loading-progress 1.1s ease-in-out infinite;
+        }
+        @keyframes cc-loading-progress {
+            0% { transform: translateX(-120%); }
+            50% { transform: translateX(70%); }
+            100% { transform: translateX(240%); }
         }
     </style>
 <script type="importmap">

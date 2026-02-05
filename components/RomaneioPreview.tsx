@@ -21,6 +21,16 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
   const kind = inferKind(data);
   const showObservation = kind !== 'COMPRA' || !!data.observationEnabled;
   const showBanking = kind !== 'COMPRA' || !!data.bankingEnabled;
+  const rawPaymentStatus = String((data as any)?.paymentStatus || '').trim();
+  const paymentStatusKey = rawPaymentStatus.toUpperCase().replaceAll(' ', '_');
+  const paymentStatusLabel =
+    paymentStatusKey === 'EM_ABERTO' ? 'Em aberto' : paymentStatusKey === 'PARCIAL' ? 'Parcial' : paymentStatusKey === 'PAGO' ? 'Pago' : rawPaymentStatus;
+  const paymentDate = String((data as any)?.paymentDate || '').trim();
+  const visibleExpenses =
+    kind !== 'COMPRA'
+      ? data.expenses || []
+      : (data.expenses || []).filter((e: any) => Math.abs(Number(e?.total) || 0) >= 0.01);
+  const hasExpenseValues = kind !== 'COMPRA' ? true : visibleExpenses.length > 0;
 
   return (
     <div className="print-container bg-white w-[210mm] min-h-[297mm] shadow-2xl mx-auto text-black border border-gray-300">
@@ -111,6 +121,20 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
           <span className="font-bold uppercase mr-4">Vencimento:</span>
           <span>{formatDate(data.dueDate)}</span>
         </div>
+        {kind === 'COMPRA' && (
+          <div className="flex items-center">
+            <span className="font-bold uppercase mr-4">Status do Pagamento:</span>
+            <span className="inline-flex items-center justify-center whitespace-nowrap min-w-[56px] px-2 pt-1 pb-1.5 leading-tight border-2 border-black bg-yellow-200 font-black uppercase tracking-wide overflow-visible">
+              {paymentStatusLabel || '-'}
+            </span>
+          </div>
+        )}
+        {kind === 'COMPRA' && (
+          <div className="flex items-center">
+            <span className="font-bold uppercase mr-4">Data do Pagamento:</span>
+            <span>{paymentDate ? formatDate(paymentDate) : '-'}</span>
+          </div>
+        )}
       </div>
 
       {/* Products Table */}
@@ -161,43 +185,47 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
         </div>
       </div>
 
-      {/* Expenses Table */}
-      <table className="w-full border-collapse mb-4">
-        <thead>
-          <tr className="bg-green-100/50 border-y border-black text-center font-bold">
-            <th className="py-2 border-r border-black w-16">CÓDIGO</th>
-            <th className="py-2 border-r border-black text-left px-2">DESCRIÇÃO DESPESAS</th>
-            <th className="py-2 border-r border-black w-24">QTD</th>
-            <th className="py-2 border-r border-black w-32">VAL. UNIT</th>
-            <th className="py-2 w-32">VALOR</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.expenses.map((e, idx) => (
-            <tr key={e.id} className="border-b border-gray-200 text-center">
-              <td className="py-1 border-r border-black">{e.code}</td>
-              <td className="py-1 border-r border-black text-left px-2 uppercase font-bold">{e.description}</td>
-              <td className="py-1 border-r border-black">{e.quantity}</td>
-              <td className="py-1 border-r border-black">
-                {(() => {
-                  const unit = String((e as any)?.unitValue ?? '').trim();
-                  return unit === '/' || unit === '' ? '/' : formatCurrency(parseFloat(unit) || 0);
-                })()}
-              </td>
-              <td className="py-1 text-right px-4">
-                {e.total === 0 ? 'R$ -' : formatCurrency(e.total)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {(kind !== 'COMPRA' || hasExpenseValues) && (
+        <>
+          {/* Expenses Table */}
+          <table className="w-full border-collapse mb-4">
+            <thead>
+              <tr className="bg-green-100/50 border-y border-black text-center font-bold">
+                <th className="py-2 border-r border-black w-16">CÓDIGO</th>
+                <th className="py-2 border-r border-black text-left px-2">DESCRIÇÃO DESPESAS</th>
+                <th className="py-2 border-r border-black w-24">QTD</th>
+                <th className="py-2 border-r border-black w-32">VAL. UNIT</th>
+                <th className="py-2 w-32">VALOR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleExpenses.map((e, idx) => (
+                <tr key={e.id} className="border-b border-gray-200 text-center">
+                  <td className="py-1 border-r border-black">{e.code}</td>
+                  <td className="py-1 border-r border-black text-left px-2 uppercase font-bold">{e.description}</td>
+                  <td className="py-1 border-r border-black">{e.quantity}</td>
+                  <td className="py-1 border-r border-black">
+                    {(() => {
+                      const unit = String((e as any)?.unitValue ?? '').trim();
+                      return unit === '/' || unit === '' ? '/' : formatCurrency(parseFloat(unit) || 0);
+                    })()}
+                  </td>
+                  <td className="py-1 text-right px-4">
+                    {e.total === 0 ? 'R$ -' : formatCurrency(e.total)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
-      <div className="flex justify-end mb-8">
-        <div className="flex items-center justify-between bg-green-100/50 p-2 rounded-sm border border-black min-w-[300px]">
-          <span className="font-bold uppercase">Total Despesas</span>
-          <span className="text-lg font-black">{formatCurrency(totals.expenses)}</span>
-        </div>
-      </div>
+          <div className="flex justify-end mb-8">
+            <div className="flex items-center justify-between bg-green-100/50 p-2 rounded-sm border border-black min-w-[300px]">
+              <span className="font-bold uppercase">Total Despesas</span>
+              <span className="text-lg font-black">{formatCurrency(totals.expenses)}</span>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="flex justify-end mb-8">
         <div className="flex items-center justify-between bg-green-200 p-3 rounded shadow-inner border-2 border-green-800 min-w-[400px]">

@@ -228,6 +228,10 @@ const mapRomaneioRow = (row: any, opts?: { applyPayload?: boolean; applyBackup?:
   if (merged.data_vencimento && !merged.dueDate) merged.dueDate = merged.data_vencimento;
   if (merged.data_de_vencimento && !merged.dueDate) merged.dueDate = merged.data_de_vencimento;
   if (merged.vencimento && !merged.dueDate) merged.dueDate = merged.vencimento;
+  if (merged.payment_status && !merged.paymentStatus) merged.paymentStatus = merged.payment_status;
+  if (merged.status_pagamento && !merged.paymentStatus) merged.paymentStatus = merged.status_pagamento;
+  if (merged.payment_date && !merged.paymentDate) merged.paymentDate = merged.payment_date;
+  if (merged.data_pagamento && !merged.paymentDate) merged.paymentDate = merged.data_pagamento;
 
   if (merged.id != null) merged.id = String(merged.id);
 
@@ -340,6 +344,8 @@ export const getRomaneios = async (signal?: AbortSignal, options?: GetRomaneiosO
     const k = String((r as any)?.kind ?? '').trim().toUpperCase();
     if (k === 'COMPRA') return 'COMPRA';
     if (k === 'VENDA') return 'VENDA';
+    const producerId = (r as any)?.producer_id ?? (r as any)?.producerId ?? (r as any)?.producer?.id ?? null;
+    if (producerId) return 'COMPRA';
     const nature = String((r as any)?.natureOfOperation ?? '').trim().toUpperCase();
     if (nature.includes('COMPRA')) return 'COMPRA';
     return 'VENDA';
@@ -733,6 +739,9 @@ export const addRomaneio = async (
   if (!romaneioForPayload.saleDate) romaneioForPayload.saleDate = romaneioForPayload.emissionDate || getLocalDate();
   const issueDateIso = toLocalNoonIsoFromDateOnly(romaneioForPayload.emissionDate) || localNoonIso;
   const dueDateOnly = toIsoDateOnly(romaneioForPayload.dueDate ?? (romaneio as any)?.dueDate ?? '');
+  const paymentStatusRaw = String((romaneioForPayload as any)?.paymentStatus ?? (romaneio as any)?.payment_status ?? '').trim();
+  const paymentStatusKey = paymentStatusRaw ? paymentStatusRaw.toUpperCase().replaceAll(' ', '_') : '';
+  const paymentDateOnly = toIsoDateOnly((romaneioForPayload as any)?.paymentDate ?? (romaneio as any)?.payment_date ?? '');
 
   const { data: userRes, error: userError } = await supabase.auth.getUser();
   throwQueryError(userError);
@@ -756,6 +765,8 @@ export const addRomaneio = async (
     const k = String((r as any)?.kind ?? '').trim().toUpperCase();
     if (k === 'COMPRA') return 'COMPRA';
     if (k === 'VENDA') return 'VENDA';
+    const producerId = (r as any)?.producer_id ?? (r as any)?.producerId ?? (r as any)?.producer?.id ?? null;
+    if (producerId) return 'COMPRA';
     const nature = String((r as any)?.natureOfOperation ?? '').trim().toUpperCase();
     if (nature.includes('COMPRA')) return 'COMPRA';
     return 'VENDA';
@@ -832,6 +843,8 @@ export const addRomaneio = async (
     observacoes: baseObs,
     montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
     peso_total: Number.isFinite(weightFromItems) ? weightFromItems : null,
+    status_pagamento: paymentStatusKey || null,
+    data_pagamento: paymentDateOnly || null,
   };
 
   const candidatePtAccent: any = {
@@ -851,6 +864,8 @@ export const addRomaneio = async (
     'observações': baseObs,
     montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
     peso_total: Number.isFinite(weightFromItems) ? weightFromItems : null,
+    status_pagamento: paymentStatusKey || null,
+    data_pagamento: paymentDateOnly || null,
   };
 
   const candidateEn: any = {
@@ -865,6 +880,8 @@ export const addRomaneio = async (
     producer_id: baseProducerId,
     total_value: Number.isFinite(totalFromItems) ? totalFromItems : null,
     total_weight: Number.isFinite(weightFromItems) ? weightFromItems : null,
+    payment_status: paymentStatusKey || null,
+    payment_date: paymentDateOnly || null,
   };
 
   const candidates = [candidatePtNoAccent, candidatePtAccent, candidateEn];
@@ -1028,6 +1045,8 @@ export const updateRomaneio = async (
     const k = String((r as any)?.kind ?? '').trim().toUpperCase();
     if (k === 'COMPRA') return 'COMPRA';
     if (k === 'VENDA') return 'VENDA';
+    const producerId = (r as any)?.producer_id ?? (r as any)?.producerId ?? (r as any)?.producer?.id ?? null;
+    if (producerId) return 'COMPRA';
     const nature = String((r as any)?.natureOfOperation ?? '').trim().toUpperCase();
     if (nature.includes('COMPRA')) return 'COMPRA';
     return 'VENDA';
@@ -1086,6 +1105,9 @@ export const updateRomaneio = async (
   const baseDate = (romaneio as any)?.emissionDate ?? (romaneio as any)?.saleDate ?? null;
   const issueDateIso = typeof baseDate === 'string' ? toLocalNoonIsoFromDateOnly(baseDate) : '';
   const dueDateOnly = toIsoDateOnly((romaneio as any)?.dueDate ?? (romaneio as any)?.due_date ?? '');
+  const paymentStatusRaw = String((romaneio as any)?.paymentStatus ?? (romaneio as any)?.payment_status ?? '').trim();
+  const paymentStatusKey = paymentStatusRaw ? paymentStatusRaw.toUpperCase().replaceAll(' ', '_') : '';
+  const paymentDateOnly = toIsoDateOnly((romaneio as any)?.paymentDate ?? (romaneio as any)?.payment_date ?? '');
   const baseObs = (romaneio as any)?.observation ?? null;
   const baseBanking = (romaneio as any)?.banking ?? (romaneio as any)?.company?.banking ?? null;
 
@@ -1102,6 +1124,8 @@ export const updateRomaneio = async (
     total_amount: Number.isFinite(totalFromItems) ? totalFromItems : null,
     observations: baseObs,
     banking: baseBanking,
+    payment_status: paymentStatusKey || null,
+    payment_date: paymentDateOnly || null,
   };
 
   const candidatePtNoAccent: any = {
@@ -1120,6 +1144,8 @@ export const updateRomaneio = async (
     montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
     peso_total: Number.isFinite(weightFromItems) ? weightFromItems : null,
     banking: baseBanking,
+    status_pagamento: paymentStatusKey || null,
+    data_pagamento: paymentDateOnly || null,
   };
 
   const candidatePtAccent: any = {
@@ -1138,6 +1164,8 @@ export const updateRomaneio = async (
     montante_total: Number.isFinite(totalFromItems) ? totalFromItems : null,
     peso_total: Number.isFinite(weightFromItems) ? weightFromItems : null,
     banking: baseBanking,
+    status_pagamento: paymentStatusKey || null,
+    data_pagamento: paymentDateOnly || null,
   };
 
   const candidateEn: any = {
@@ -1187,6 +1215,10 @@ export const updateRomaneio = async (
     if (merged.data_vencimento && !merged.dueDate) merged.dueDate = merged.data_vencimento;
     if (merged.data_de_vencimento && !merged.dueDate) merged.dueDate = merged.data_de_vencimento;
     if (merged.vencimento && !merged.dueDate) merged.dueDate = merged.vencimento;
+    if (merged.payment_status && !merged.paymentStatus) merged.paymentStatus = merged.payment_status;
+    if (merged.status_pagamento && !merged.paymentStatus) merged.paymentStatus = merged.status_pagamento;
+    if (merged.payment_date && !merged.paymentDate) merged.paymentDate = merged.payment_date;
+    if (merged.data_pagamento && !merged.paymentDate) merged.paymentDate = merged.data_pagamento;
 
     if (merged.guia != null && merged.number == null) merged.number = String(merged.guia);
     if (merged.numero != null && merged.number == null) merged.number = String(merged.numero);

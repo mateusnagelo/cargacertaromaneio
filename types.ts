@@ -116,6 +116,8 @@ export interface RomaneioData {
   emissionDate: string;
   saleDate: string;
   dueDate: string;
+  paymentStatus?: 'EM_ABERTO' | 'PARCIAL' | 'PAGO' | string;
+  paymentDate?: string;
   natureOfOperation: string;
   terms: string;
   status: RomaneioStatus;
@@ -143,4 +145,16 @@ export interface RomaneioData {
   banking: BankingInfo;
   products: Product[];
   expenses: Expense[];
+}
+
+export interface ProducerPayment {
+  id: string;
+  created_at?: string;
+  romaneioId: string;
+  producerId: string;
+  amount: number;
+  paidAt: string;
+  method?: string;
+  reference?: string;
+  note?: string;
 }

@@ -20,9 +20,10 @@ interface Props {
   initialData?: RomaneioData | null;
   onCreateNew?: () => void;
   initialKind?: RomaneioKind;
+  allowEditConcluded?: boolean;
 }
 
-const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, initialKind = 'VENDA' as RomaneioKind }) => {
+const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, initialKind = 'VENDA' as RomaneioKind, allowEditConcluded = false }) => {
   const [view, setView] = useState<'edit' | 'preview'>('edit');
   
   // Data fetched from API
@@ -40,8 +41,9 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
 
   const isReadOnly = useMemo(() => {
     if (!initialData) return false;
+    if (allowEditConcluded) return false;
     return isConcluido((initialData as any)?.status);
-  }, [initialData]);
+  }, [allowEditConcluded, initialData]);
 
   const effectiveView = isReadOnly ? 'preview' : view;
 
@@ -63,6 +65,10 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
     base.natureOfOperation = initialKind === 'COMPRA' ? 'COMPRA' : 'VENDA';
     base.observationEnabled = initialKind !== 'COMPRA';
     base.bankingEnabled = initialKind !== 'COMPRA';
+    if (initialKind === 'COMPRA') {
+      (base as any).paymentStatus = (base as any).paymentStatus || 'EM_ABERTO';
+      (base as any).paymentDate = (base as any).paymentDate || '';
+    }
     if (!input) return base;
     const merged: any = { ...base, ...input };
     merged.kind = inferKind(input);
@@ -85,7 +91,11 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
   const [isObservationManagerOpen, setIsObservationManagerOpen] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [isSaveSuccessOpen, setIsSaveSuccessOpen] = useState(false);
+  const [successNavigateToHistory, setSuccessNavigateToHistory] = useState(false);
+  const [successSavedRomaneio, setSuccessSavedRomaneio] = useState<RomaneioData | null>(null);
   const [isSelectBeforeSaveOpen, setIsSelectBeforeSaveOpen] = useState(false);
+  const [isRequiredFieldsOpen, setIsRequiredFieldsOpen] = useState(false);
+  const [missingRequiredFields, setMissingRequiredFields] = useState<string[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -135,9 +145,9 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
   useEffect(() => {
     if (initialData) {
       setRomaneio(normalizeRomaneio(initialData));
-      setView(isConcluido((initialData as any)?.status) ? 'preview' : 'edit');
+      setView(isConcluido((initialData as any)?.status) && !allowEditConcluded ? 'preview' : 'edit');
     }
-  }, [initialData]);
+  }, [allowEditConcluded, initialData]);
 
   const refreshExpenses = async () => {
     const controller = new AbortController();
@@ -369,7 +379,8 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
   };
 
   const processSave = async (forcedStatus?: RomaneioStatus) => {
-    if (initialData && isConcluido((initialData as any)?.status)) {
+    if (saveLoading) return;
+    if (!allowEditConcluded && initialData && isConcluido((initialData as any)?.status)) {
       alert('Este romaneio está CONCLUÍDO e não pode ser editado. Use CLONAR no Histórico para criar um novo.');
       return;
     }
@@ -377,10 +388,30 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
       setIsSelectBeforeSaveOpen(true);
       return;
     }
+    if (romaneioKind === 'COMPRA') {
+      const missing: string[] = [];
+      const dueDate = String(romaneio.dueDate || '').trim();
+      if (!dueDate) missing.push('Vencimento');
+
+      const rawPaymentStatus = String((romaneio as any).paymentStatus || '').trim();
+      const paymentStatus = rawPaymentStatus.toUpperCase().replaceAll(' ', '_');
+      if (!paymentStatus) missing.push('Status do Pagamento');
+
+      const paymentDate = String((romaneio as any).paymentDate || '').trim();
+      if (paymentStatus === 'PAGO' && !paymentDate) missing.push('Data do Pagamento');
+
+      if (missing.length > 0) {
+        setMissingRequiredFields(missing);
+        setIsRequiredFieldsOpen(true);
+        return;
+      }
+    }
 
     if (initialData?.id) {
       const controller = new AbortController();
       setIsSaveSuccessOpen(false);
+      setSuccessNavigateToHistory(false);
+      setSuccessSavedRomaneio(null);
       setSaveLoading(true);
       try {
         const updated = await updateRomaneio(
@@ -394,8 +425,11 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
           } as any,
           controller.signal
         );
-        setRomaneio(normalizeRomaneio(updated));
+        const normalized = normalizeRomaneio(updated);
+        setRomaneio(normalized);
         setView('preview');
+        setSuccessSavedRomaneio(normalized);
+        setSuccessNavigateToHistory(romaneioKind === 'COMPRA');
         setIsSaveSuccessOpen(true);
       } catch (error: any) {
         if (error.name !== 'AbortError') {
@@ -418,6 +452,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
     };
 
     const controller = new AbortController();
+    setSaveLoading(true);
     try {
       const savedRomaneio = await addRomaneio(finalData, controller.signal);
       try {
@@ -438,6 +473,17 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
         const message = error instanceof Error ? error.message : String(error);
         alert(`Erro ao salvar o romaneio: ${message}`);
       }
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const closeSaveSuccess = () => {
+    setIsSaveSuccessOpen(false);
+    if (successNavigateToHistory && successSavedRomaneio) {
+      setSuccessNavigateToHistory(false);
+      setSuccessSavedRomaneio(null);
+      onSave(successSavedRomaneio);
     }
   };
 
@@ -529,9 +575,16 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
             <button 
               onClick={() => processSave()}
               disabled={saveLoading}
-              className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-bold shadow-lg shadow-purple-100 dark:shadow-none disabled:opacity-60"
+              className="px-6 py-2.5 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-bold shadow-lg shadow-purple-100 dark:shadow-none disabled:opacity-60 disabled:cursor-not-allowed relative overflow-hidden"
             >
-              <Save size={18} /> {saveLoading ? 'Salvando...' : 'Salvar Alterações'}
+              <span className="relative z-10 flex items-center gap-2">
+                <Save size={18} /> {saveLoading ? 'Salvando...' : 'Salvar Alterações'}
+              </span>
+              {saveLoading && (
+                <span className="cc-loading-progress-track" aria-hidden="true">
+                  <span className="cc-loading-progress-bar" />
+                </span>
+              )}
             </button>
           )}
           {!initialData && !isReadOnly && (
@@ -638,7 +691,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
       {isSaveSuccessOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[95] p-4 flex items-center justify-center"
-          onClick={() => setIsSaveSuccessOpen(false)}
+          onClick={closeSaveSuccess}
         >
           <div
             className="bg-white dark:bg-slate-900 rounded-[32px] w-full max-w-md shadow-2xl transition-colors p-6"
@@ -654,7 +707,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
               </div>
               <button
                 type="button"
-                onClick={() => setIsSaveSuccessOpen(false)}
+                onClick={closeSaveSuccess}
                 className="p-2 rounded-xl text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800"
               >
                 <X size={18} />
@@ -663,10 +716,10 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
             <div className="mt-6 flex justify-end">
               <button
                 type="button"
-                onClick={() => setIsSaveSuccessOpen(false)}
+                onClick={closeSaveSuccess}
                 className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all font-bold shadow-lg shadow-green-100 dark:shadow-none"
               >
-                OK
+                {successNavigateToHistory ? 'OK e Voltar' : 'OK'}
               </button>
             </div>
           </div>
@@ -711,6 +764,53 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
         </div>
       )}
 
+      {isRequiredFieldsOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[95] p-4 flex items-center justify-center"
+          onClick={() => setIsRequiredFieldsOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-[32px] w-full max-w-md shadow-2xl transition-colors p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded-xl text-red-700 dark:text-red-400">
+                <AlertTriangle size={20} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-widest">Campos obrigatórios</h3>
+                <p className="text-sm text-gray-600 dark:text-slate-300 mt-1">
+                  Preencha os campos abaixo para salvar:
+                </p>
+                {missingRequiredFields.length > 0 && (
+                  <ul className="mt-3 list-disc pl-5 text-sm text-gray-700 dark:text-slate-200 font-bold space-y-1">
+                    {missingRequiredFields.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRequiredFieldsOpen(false)}
+                className="p-2 rounded-xl text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsRequiredFieldsOpen(false)}
+                className="flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-red-100 dark:shadow-none"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {effectiveView === 'edit' && (
         <div className="no-print fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-gray-100 dark:border-slate-800 p-4 shadow-2xl z-50 transition-colors">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
@@ -729,9 +829,16 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
             <button 
               onClick={() => processSave('CONCLUÍDO')} 
               disabled={saveLoading}
-              className="bg-green-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-green-700 shadow-xl shadow-green-100 dark:shadow-none transition-all flex items-center gap-3 disabled:opacity-60"
+              className="bg-green-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-green-700 shadow-xl shadow-green-100 dark:shadow-none transition-all flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed relative overflow-hidden"
             >
-              <CheckCircle size={20} /> {romaneioKind === 'COMPRA' ? 'Concluir Compra' : 'Concluir Venda'}
+              <span className="relative z-10 flex items-center gap-3">
+                <CheckCircle size={20} /> {saveLoading ? 'Concluindo...' : (romaneioKind === 'COMPRA' ? 'Concluir Compra' : 'Concluir Venda')}
+              </span>
+              {saveLoading && (
+                <span className="cc-loading-progress-track" aria-hidden="true">
+                  <span className="cc-loading-progress-bar" />
+                </span>
+              )}
             </button>
           </div>
         </div>

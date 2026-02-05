@@ -19,6 +19,8 @@ export const DEFAULT_ROMANEIO: RomaneioData = {
   emissionDate: toLocalDateInput(),
   saleDate: toLocalDateInput(),
   dueDate: "",
+  paymentStatus: "",
+  paymentDate: "",
   natureOfOperation: "VENDA",
   terms: "30 DIAS",
   observation: DEFAULT_OBSERVATION,

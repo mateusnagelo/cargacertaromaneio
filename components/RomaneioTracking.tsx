@@ -16,7 +16,8 @@ import {
   Copy,
   Check,
   X,
-  Info
+  Info,
+  Edit3
 } from 'lucide-react';
 import { formatCurrency, formatDate, toLocalDateInput } from '../utils';
 import {
@@ -29,7 +30,7 @@ import {
 } from '../api/romaneios';
 
 interface Props {
-  onView: (romaneio: RomaneioData) => void;
+  onView: (romaneio: RomaneioData, options?: { allowEditConcluded?: boolean; openInEdit?: boolean }) => void;
   kind?: RomaneioKind;
 }
 
@@ -46,6 +47,8 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
   const [cloneTarget, setCloneTarget] = useState<RomaneioData | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RomaneioData | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [editConcludedTarget, setEditConcludedTarget] = useState<RomaneioData | null>(null);
+  const [editConcludedLoading, setEditConcludedLoading] = useState(false);
   const [cloneOptions, setCloneOptions] = useState({
     client: true,
     products: true,
@@ -151,6 +154,21 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
       alert('Falha ao carregar romaneio para visualização.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const confirmEditConcluded = async () => {
+    if (!editConcludedTarget?.id || editConcludedLoading) return;
+    try {
+      setEditConcludedLoading(true);
+      const full = await getRomaneioById(String(editConcludedTarget.id));
+      setEditConcludedTarget(null);
+      onView(full, { allowEditConcluded: true, openInEdit: true });
+    } catch (e) {
+      console.error('Falha ao carregar romaneio para edição:', e);
+      alert('Falha ao carregar romaneio para edição.');
+    } finally {
+      setEditConcludedLoading(false);
     }
   };
 
@@ -471,6 +489,14 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
                     <td className="px-6 py-5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => { void handleCloneOpen(r); }} className="p-2.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-all"><Copy size={18} /></button>
+                        {kind === 'COMPRA' && isConcluido(r.status) && (
+                          <button
+                            onClick={() => setEditConcludedTarget(r)}
+                            className="p-2.5 text-amber-500 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-xl transition-all"
+                          >
+                            <Edit3 size={18} />
+                          </button>
+                        )}
                         <button onClick={() => { void handleView(r); }} className="p-2.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-xl transition-all"><Printer size={18} /></button>
                         <button onClick={() => setDeleteTarget(r)} className="p-2.5 text-gray-300 dark:text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-all"><Trash2 size={18} /></button>
                       </div>
@@ -599,6 +625,76 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
                   </>
                 ) : (
                   'Deletar'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editConcludedTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-end md:items-center justify-center z-[120] p-0 md:p-4 animate-in fade-in slide-in-from-bottom duration-300">
+          <div className="bg-white dark:bg-slate-900 rounded-t-[40px] md:rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 md:p-8 border-b border-gray-100 dark:border-slate-800 bg-amber-50/60 dark:bg-amber-900/20 shrink-0">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-amber-600 p-2 rounded-xl text-white shadow-lg shadow-amber-100 dark:shadow-none"><Edit3 size={20} /></div>
+                <button
+                  onClick={() => setEditConcludedTarget(null)}
+                  disabled={editConcludedLoading}
+                  className="p-2 hover:bg-amber-100/50 dark:hover:bg-slate-800 rounded-xl text-amber-700 dark:text-amber-400 transition-all disabled:opacity-60"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              <h3 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">Editar Romaneio Concluído</h3>
+              <p className="text-[10px] text-amber-700 dark:text-amber-400 font-black uppercase mt-2 tracking-widest">Atenção</p>
+            </div>
+
+            <div className="p-6 md:p-8 space-y-4 overflow-y-auto">
+              <div className="bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-800 rounded-3xl p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-gray-900 dark:text-white uppercase truncate">
+                      Romaneio #{String(editConcludedTarget.number || (editConcludedTarget as any)?.guia || (editConcludedTarget as any)?.numero || '')}
+                    </p>
+                    <p className="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase truncate mt-1">
+                      {String(editConcludedTarget.client?.name || editConcludedTarget.customer?.name || '')}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest shrink-0">
+                    {formatDate(editConcludedTarget.saleDate || editConcludedTarget.emissionDate || (editConcludedTarget as any)?.data_de_emissao)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 rounded-2xl bg-yellow-50/60 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-900/30">
+                <div className="text-yellow-700 dark:text-yellow-300 pt-0.5"><Info size={18} /></div>
+                <div className="text-[11px] font-bold text-yellow-800 dark:text-yellow-200">
+                  Este romaneio está CONCLUÍDO. Ao editar e salvar, os dados serão alterados mesmo assim.
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 gap-4 shrink-0">
+              <button
+                onClick={() => setEditConcludedTarget(null)}
+                disabled={editConcludedLoading}
+                className="py-4 rounded-2xl text-gray-400 dark:text-slate-500 font-black uppercase tracking-widest text-[10px] disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmEditConcluded}
+                disabled={editConcludedLoading}
+                className="py-4 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black uppercase tracking-widest shadow-xl shadow-amber-100 dark:shadow-none text-[10px] disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {editConcludedLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Carregando...
+                  </>
+                ) : (
+                  'Editar Mesmo Assim'
                 )}
               </button>
             </div>

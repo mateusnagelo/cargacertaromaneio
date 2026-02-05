@@ -11,6 +11,7 @@ import {
   X,
   Settings,
   DollarSign,
+  Wallet,
   ClipboardList,
   BarChart3,
   AlertTriangle,
@@ -25,6 +26,7 @@ import CompanyManager from './components/CompanyManager.tsx';
 import CustomerManager from './components/CustomerManager.tsx';
 import ProductManager from './components/ProductManager.tsx';
 import ExpenseManager from './components/ExpenseManager';
+import Financeiro from './components/Financeiro';
 import RomaneioGenerator from './components/RomaneioGenerator';
 import RomaneioTracking from './components/RomaneioTracking';
 import ObservationManager from './components/ObservationManager';
@@ -46,6 +48,7 @@ type Screen =
   | 'romaneios'
   | 'romaneios_compra'
   | 'expenses'
+  | 'financeiro'
   | 'tracking'
   | 'tracking_compra'
   | 'observations'
@@ -58,6 +61,7 @@ const App: React.FC = () => {
   const [forcePasswordReset, setForcePasswordReset] = useState(false);
   const [activeScreen, setActiveScreen] = useState<Screen>('dashboard');
   const [selectedRomaneio, setSelectedRomaneio] = useState<RomaneioData | null>(null);
+  const [allowEditConcluded, setAllowEditConcluded] = useState(false);
   const [screenStack, setScreenStack] = useState<Screen[]>(['dashboard']);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [dueSoonRomaneios, setDueSoonRomaneios] = useState<RomaneioData[]>([]);
@@ -355,6 +359,7 @@ const App: React.FC = () => {
         return <RomaneioTracking 
                   onView={(romaneio) => {
                     setSelectedRomaneio(romaneio);
+                    setAllowEditConcluded(false);
                     navigateTo('romaneios');
                   }}
                 />;
@@ -362,8 +367,9 @@ const App: React.FC = () => {
         return (
           <RomaneioTracking
             kind="COMPRA"
-            onView={(romaneio) => {
+            onView={(romaneio, options) => {
               setSelectedRomaneio(romaneio);
+              setAllowEditConcluded(!!options?.allowEditConcluded);
               navigateTo('romaneios_compra');
             }}
           />
@@ -380,6 +386,8 @@ const App: React.FC = () => {
         return <ObservationManager />;
       case 'expenses':
         return <ExpenseManager />;
+      case 'financeiro':
+        return <Financeiro />;
       case 'reports':
         return <Reports />;
       case 'settings':
@@ -390,10 +398,12 @@ const App: React.FC = () => {
             key="romaneios-venda"
             onSave={() => {
               setSelectedRomaneio(null);
+              setAllowEditConcluded(false);
               navigateTo('tracking', { reset: true });
             }}
             onCreateNew={() => {
               setSelectedRomaneio(null);
+              setAllowEditConcluded(false);
             }}
             initialData={selectedRomaneio}
           />
@@ -403,12 +413,15 @@ const App: React.FC = () => {
           <RomaneioGenerator
             key="romaneios-compra"
             initialKind="COMPRA"
+            allowEditConcluded={allowEditConcluded}
             onSave={() => {
               setSelectedRomaneio(null);
+              setAllowEditConcluded(false);
               navigateTo('tracking_compra', { reset: true });
             }}
             onCreateNew={() => {
               setSelectedRomaneio(null);
+              setAllowEditConcluded(false);
             }}
             initialData={selectedRomaneio}
           />
@@ -441,6 +454,7 @@ const App: React.FC = () => {
     { id: 'reports', label: 'Relatórios', icon: BarChart3, color: 'text-blue-500' },
     { id: 'products', label: 'Estoque', icon: Package, color: 'text-green-500' },
     { id: 'expenses', label: 'Despesas', icon: DollarSign, color: 'text-pink-500' },
+    { id: 'financeiro', label: 'Financeiro', icon: Wallet, color: 'text-emerald-500' },
     { id: 'observations', label: 'Observações', icon: MessageSquareText, color: 'text-cyan-500' },
     { id: 'customers', label: 'Clientes', icon: Users, color: 'text-blue-500' },
     { id: 'producers', label: 'Produtores', icon: Users, color: 'text-emerald-500' },

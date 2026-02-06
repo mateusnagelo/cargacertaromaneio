@@ -581,7 +581,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
                             <ClipboardList size={18} />
                           </button>
                         )}
-                        {kind === 'COMPRA' && isConcluido(r.status) && (
+                        {isConcluido(r.status) && (
                           <button
                             onClick={() => setEditConcludedTarget(r)}
                             className="p-2.5 text-amber-500 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-xl transition-all"

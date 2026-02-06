@@ -428,9 +428,7 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
         const normalized = normalizeRomaneio(updated);
         setRomaneio(normalized);
         setView('preview');
-        setSuccessSavedRomaneio(normalized);
-        setSuccessNavigateToHistory(romaneioKind === 'COMPRA');
-        setIsSaveSuccessOpen(true);
+        onSave(normalized as RomaneioData);
       } catch (error: any) {
         if (error.name !== 'AbortError') {
           console.error('Failed to update romaneio:', error);

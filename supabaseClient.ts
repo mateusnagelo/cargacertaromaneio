@@ -20,18 +20,42 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const parseSupabaseSessionAccessTokenFromStorage = (supabaseHost: string) => {
+  const readTokenFromRaw = (raw: string) => {
+    try {
+      const parsed = JSON.parse(raw) as any
+      const token =
+        String(parsed?.access_token || '') ||
+        String(parsed?.currentSession?.access_token || '') ||
+        String(parsed?.session?.access_token || '')
+      return token.trim()
+    } catch {
+      return ''
+    }
+  }
+
   try {
     const projectRef = String(supabaseHost || '').split('.')[0] || ''
-    if (!projectRef) return ''
-    const key = `sb-${projectRef}-auth-token`
-    const raw = (globalThis as any)?.localStorage?.getItem(key)
-    if (!raw) return ''
-    const parsed = JSON.parse(raw) as any
-    const token =
-      String(parsed?.access_token || '') ||
-      String(parsed?.currentSession?.access_token || '') ||
-      String(parsed?.session?.access_token || '')
-    return token.trim()
+    const storage: Storage | undefined = (globalThis as any)?.localStorage
+    if (!storage) return ''
+
+    if (projectRef) {
+      const key = `sb-${projectRef}-auth-token`
+      const raw = storage.getItem(key)
+      const token = raw ? readTokenFromRaw(raw) : ''
+      if (token) return token
+    }
+
+    for (let i = 0; i < storage.length; i++) {
+      const k = storage.key(i) || ''
+      if (!k) continue
+      if (!k.includes('auth-token')) continue
+      const raw = storage.getItem(k)
+      if (!raw) continue
+      const token = readTokenFromRaw(raw)
+      if (token) return token
+    }
+
+    return ''
   } catch {
     return ''
   }

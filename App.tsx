@@ -357,9 +357,9 @@ const App: React.FC = () => {
         return <Dashboard />;
       case 'tracking':
         return <RomaneioTracking 
-                  onView={(romaneio) => {
+                  onView={(romaneio, options) => {
                     setSelectedRomaneio(romaneio);
-                    setAllowEditConcluded(false);
+                    setAllowEditConcluded(!!options?.allowEditConcluded);
                     navigateTo('romaneios');
                   }}
                 />;
@@ -396,6 +396,7 @@ const App: React.FC = () => {
         return (
           <RomaneioGenerator
             key="romaneios-venda"
+            allowEditConcluded={allowEditConcluded}
             onSave={() => {
               setSelectedRomaneio(null);
               setAllowEditConcluded(false);

@@ -1579,11 +1579,23 @@ export const sendRomaneioEmailNotification = async (
       }
     }
 
-    const res: any = await (supabase as any).functions.invoke('send-romaneio-email', {
-      body: params,
-      signal,
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    const invokeOnce = async () => {
+      return (supabase as any).functions.invoke('send-romaneio-email', { body: params, signal });
+    };
+
+    let res: any = await invokeOnce();
+    if (res?.error) {
+      const errObj: any = res.error || null;
+      const status =
+        Number(errObj?.context?.status) || Number(errObj?.status) || Number(errObj?.statusCode) || null;
+      if (status === 401) {
+        try {
+          await supabase.auth.refreshSession();
+        } catch {
+        }
+        res = await invokeOnce();
+      }
+    }
     if (res?.error) {
       const errObj: any = res.error || null;
       const status =

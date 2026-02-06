@@ -26,6 +26,12 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
   const paymentStatusLabel =
     paymentStatusKey === 'EM_ABERTO' ? 'Em aberto' : paymentStatusKey === 'PARCIAL' ? 'Parcial' : paymentStatusKey === 'PAGO' ? 'Pago' : rawPaymentStatus;
   const paymentDate = String((data as any)?.paymentDate || '').trim();
+  const clientDocRaw =
+    String((data as any)?.client?.cnpj || '').trim() ||
+    String((data as any)?.client?.cpf || '').trim() ||
+    String((data as any)?.customer?.cnpj || '').trim() ||
+    String((data as any)?.customer?.cpf || '').trim();
+  const clientDoc = clientDocRaw || '-';
   const visibleExpenses =
     kind !== 'COMPRA'
       ? data.expenses || []
@@ -84,7 +90,7 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
           <span className="font-bold uppercase">{kind === 'COMPRA' ? 'Produtor:' : 'Cliente:'}</span> {data.client.name}
         </div>
         <div>
-          <span className="font-bold uppercase">{kind === 'COMPRA' ? 'CPF:' : 'CNPJ:'}</span> {data.client.cnpj}
+          <span className="font-bold uppercase">CNPJ / CPF:</span> {clientDoc}
         </div>
         <div>
           <span className="font-bold uppercase">Bairro:</span> {data.client.neighborhood}
@@ -124,7 +130,9 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
         {kind === 'COMPRA' && (
           <div className="flex items-center">
             <span className="font-bold uppercase mr-4">Status do Pagamento:</span>
-            <span className="inline-flex items-center justify-center whitespace-nowrap min-w-[56px] px-2 pt-1 pb-1.5 leading-tight border-2 border-black bg-yellow-200 font-black uppercase tracking-wide overflow-visible">
+            <span
+              className={`inline-flex items-center justify-center whitespace-nowrap min-w-[56px] px-2 pt-1 pb-1.5 leading-tight border-2 border-black font-black uppercase tracking-wide overflow-visible ${paymentStatusKey === 'PAGO' ? 'bg-green-200' : 'bg-yellow-200'}`}
+            >
               {paymentStatusLabel || '-'}
             </span>
           </div>

@@ -28,6 +28,7 @@ import {
   updateRomaneioStatus as updateStatusAPI,
   sendRomaneioEmailNotification,
 } from '../api/romaneios';
+import { addProducerPayment } from '../api/producerPayments';
 
 interface Props {
   onView: (romaneio: RomaneioData, options?: { allowEditConcluded?: boolean; openInEdit?: boolean }) => void;
@@ -49,6 +50,10 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [editConcludedTarget, setEditConcludedTarget] = useState<RomaneioData | null>(null);
   const [editConcludedLoading, setEditConcludedLoading] = useState(false);
+  const [receiptTarget, setReceiptTarget] = useState<RomaneioData | null>(null);
+  const [receiptAmount, setReceiptAmount] = useState<string>('');
+  const [receiptPaidAt, setReceiptPaidAt] = useState<string>(toLocalDateInput());
+  const [receiptSaving, setReceiptSaving] = useState(false);
   const [cloneOptions, setCloneOptions] = useState({
     client: true,
     products: true,
@@ -78,6 +83,14 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
 
   const isConcluido = (status: unknown) => normalizeStatus(status) === 'CONCLUÍDO';
 
+  const parseMoneyToNumber = (v: unknown) => {
+    const s = String(v ?? '').trim();
+    if (!s) return null;
+    const n = parseFloat(s.replace(',', '.'));
+    if (!Number.isFinite(n)) return null;
+    return n;
+  };
+
   const toOptionalInt = (v: unknown) => {
     const s = String(v ?? '').trim();
     if (!s) return null;
@@ -106,6 +119,77 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
       if (bNum !== null) return 1;
       return 0;
     });
+  };
+
+  const computeRowTotal = (r: RomaneioData) => {
+    const productsTotal = Array.isArray(r.products)
+      ? r.products.reduce((pAcc, p) => pAcc + ((p.quantity || 0) * (p.unitValue || 0)), 0)
+      : 0;
+    const expensesTotal = Array.isArray(r.expenses) ? r.expenses.reduce((eAcc, e) => eAcc + (Number(e.total) || 0), 0) : 0;
+    const hasItems = (Array.isArray(r.products) && r.products.length > 0) || (Array.isArray(r.expenses) && r.expenses.length > 0);
+    const totalFromItems = kind === 'COMPRA' ? productsTotal - expensesTotal : productsTotal + expensesTotal;
+    const totalFromDb = Number((r as any)?.montante_total ?? (r as any)?.total_value ?? 0) || 0;
+    return hasItems ? totalFromItems : totalFromDb;
+  };
+
+  const getProducerIdForReceipt = (r: RomaneioData) => {
+    const id =
+      (r as any)?.producerId ??
+      (r as any)?.producer_id ??
+      (r as any)?.producer?.id ??
+      (r as any)?.customerId ??
+      (r as any)?.customer_id ??
+      (r as any)?.customer?.id ??
+      '';
+    return String(id ?? '').trim();
+  };
+
+  const openReceipt = (r: RomaneioData) => {
+    const total = computeRowTotal(r);
+    setReceiptPaidAt(toLocalDateInput());
+    setReceiptAmount(total ? String(Number(total).toFixed(2)) : '');
+    setReceiptTarget(r);
+  };
+
+  const handleSaveReceipt = async () => {
+    if (receiptSaving) return;
+    const target = receiptTarget;
+    if (!target?.id) return;
+
+    const producerId = getProducerIdForReceipt(target);
+    if (!producerId) {
+      alert('Produtor não encontrado neste romaneio.');
+      return;
+    }
+
+    const amount = parseMoneyToNumber(receiptAmount);
+    if (amount === null || amount <= 0) {
+      alert('Informe um valor válido.');
+      return;
+    }
+
+    const paidAt = String(receiptPaidAt || '').trim();
+    if (!paidAt) {
+      alert('Informe a data de pagamento.');
+      return;
+    }
+
+    try {
+      setReceiptSaving(true);
+      await addProducerPayment({
+        romaneioId: String(target.id),
+        producerId,
+        amount,
+        paidAt,
+      });
+      setReceiptTarget(null);
+      alert('Recibo salvo.');
+    } catch (e: any) {
+      console.error('Falha ao salvar recibo:', e);
+      alert(String(e?.message || e || 'Falha ao salvar recibo.'));
+    } finally {
+      setReceiptSaving(false);
+    }
   };
 
   const fetchRomaneios = async (signal?: AbortSignal) => {
@@ -489,6 +573,14 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
                     <td className="px-6 py-5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => { void handleCloneOpen(r); }} className="p-2.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-all"><Copy size={18} /></button>
+                        {kind === 'COMPRA' && normalizeStatus(r.status) !== 'CANCELADO' && (
+                          <button
+                            onClick={() => openReceipt(r)}
+                            className="p-2.5 text-green-500 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-xl transition-all"
+                          >
+                            <ClipboardList size={18} />
+                          </button>
+                        )}
                         {kind === 'COMPRA' && isConcluido(r.status) && (
                           <button
                             onClick={() => setEditConcludedTarget(r)}
@@ -518,6 +610,86 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
           </table>
         </div>
       </div>
+
+      {receiptTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-end md:items-center justify-center z-[105] p-0 md:p-4 animate-in fade-in slide-in-from-bottom duration-300">
+          <div className="bg-white dark:bg-slate-900 rounded-t-[40px] md:rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 md:p-8 border-b border-gray-100 dark:border-slate-800 bg-green-50/50 dark:bg-green-900/20 shrink-0">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-green-600 p-2 rounded-xl text-white shadow-lg shadow-green-100 dark:shadow-none">
+                  <ClipboardList size={20} />
+                </div>
+                <button
+                  onClick={() => setReceiptTarget(null)}
+                  disabled={receiptSaving}
+                  className="p-2 hover:bg-green-100/50 dark:hover:bg-slate-800 rounded-xl text-green-700 dark:text-green-400 transition-all disabled:opacity-60"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              <h3 className="text-xl font-black text-gray-800 dark:text-white uppercase tracking-tight leading-none">Recibo</h3>
+              <p className="text-[10px] text-green-700 dark:text-green-400 font-black uppercase mt-2 tracking-widest">
+                Romaneio #{String(receiptTarget.number || (receiptTarget as any)?.guia || (receiptTarget as any)?.numero || '')}
+              </p>
+            </div>
+
+            <div className="p-6 md:p-8 space-y-4 overflow-y-auto">
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+                  Valor do Recibo
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={receiptAmount}
+                  onChange={(e) => setReceiptAmount(e.target.value)}
+                  placeholder="0,00"
+                  className="w-full px-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-green-500 transition-all text-sm text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+                  Data de Pagamento
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={18} />
+                  <input
+                    type="date"
+                    value={receiptPaidAt}
+                    onChange={(e) => setReceiptPaidAt(e.target.value)}
+                    className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-green-500 transition-all text-sm text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 gap-4 shrink-0">
+              <button
+                onClick={() => setReceiptTarget(null)}
+                disabled={receiptSaving}
+                className="py-4 rounded-2xl text-gray-400 dark:text-slate-500 font-black uppercase tracking-widest text-[10px] disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveReceipt}
+                disabled={receiptSaving}
+                className="py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-widest shadow-xl shadow-green-100 dark:shadow-none text-[10px] disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {receiptSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Salvando...
+                  </>
+                ) : (
+                  'SALVAR'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Clone Modal */}
       {cloneTarget && (

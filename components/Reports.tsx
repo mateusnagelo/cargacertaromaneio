@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, FileDown, Filter, RotateCcw, Search } from 'lucide-react';
 import { getCompanies } from '../api/companies';
 import { getCustomers } from '../api/customers';
@@ -17,6 +17,34 @@ type SortKey =
   | 'total_asc'
   | 'number_desc'
   | 'number_asc';
+
+type ReportFilters = {
+  dateField: DateField;
+  fromDate: string;
+  toDate: string;
+  kind: RomaneioKind | 'TODOS';
+  status: RomaneioStatus | 'TODOS';
+  companyId: string;
+  customerId: string;
+  minTotal: string;
+  maxTotal: string;
+  search: string;
+  sortKey: SortKey;
+};
+
+const initialReportFilters: ReportFilters = {
+  dateField: 'saleDate',
+  fromDate: '',
+  toDate: '',
+  kind: 'TODOS',
+  status: 'TODOS',
+  companyId: '',
+  customerId: '',
+  minTotal: '',
+  maxTotal: '',
+  search: '',
+  sortKey: 'id_desc',
+};
 
 const Reports: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -37,6 +65,26 @@ const Reports: React.FC = () => {
   const [sortKey, setSortKey] = useState<SortKey>('id_desc');
 
   const reportRef = useRef<HTMLDivElement | null>(null);
+  const lastQueryControllerRef = useRef<AbortController | null>(null);
+
+  const [appliedFilters, setAppliedFilters] = useState<ReportFilters>(initialReportFilters);
+
+  const draftFilters: ReportFilters = useMemo(
+    () => ({
+      dateField,
+      fromDate,
+      toDate,
+      kind,
+      status,
+      companyId,
+      customerId,
+      minTotal,
+      maxTotal,
+      search,
+      sortKey,
+    }),
+    [companyId, customerId, dateField, fromDate, kind, maxTotal, minTotal, search, sortKey, status, toDate]
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -58,8 +106,10 @@ const Reports: React.FC = () => {
     return () => controller.abort();
   }, []);
 
-  useEffect(() => {
+  const generateReport = useCallback(async (filters: ReportFilters) => {
+    lastQueryControllerRef.current?.abort();
     const controller = new AbortController();
+    lastQueryControllerRef.current = controller;
     const signal = controller.signal;
 
     const parseAmount = (v: string) => {
@@ -69,53 +119,52 @@ const Reports: React.FC = () => {
       return Number.isFinite(n) ? n : null;
     };
 
-    const searchTerm = search.trim();
+    const searchTerm = filters.search.trim();
     const serverSearch = /^\d+$/.test(searchTerm) ? searchTerm : '';
-    const minTotalValue = parseAmount(minTotal);
-    const maxTotalValue = parseAmount(maxTotal);
+    const minTotalValue = parseAmount(filters.minTotal);
+    const maxTotalValue = parseAmount(filters.maxTotal);
     const hasAnyFilter =
-      status !== 'TODOS' ||
-      kind !== 'TODOS' ||
-      !!String(companyId || '').trim() ||
-      !!String(customerId || '').trim() ||
+      filters.status !== 'TODOS' ||
+      filters.kind !== 'TODOS' ||
+      !!String(filters.companyId || '').trim() ||
+      !!String(filters.customerId || '').trim() ||
       minTotalValue !== null ||
       maxTotalValue !== null ||
       !!serverSearch ||
-      !!String(fromDate || '').trim() ||
-      !!String(toDate || '').trim();
+      !!String(filters.fromDate || '').trim() ||
+      !!String(filters.toDate || '').trim();
 
-    const t = setTimeout(async () => {
-      try {
-        setLoading(true);
-        const r = await getRomaneios(signal, {
-          status,
-          kind,
-          companyId: companyId || undefined,
-          customerId: customerId || undefined,
-          minTotal: minTotalValue,
-          maxTotal: maxTotalValue,
-          search: serverSearch || undefined,
-          fromDate: fromDate || undefined,
-          toDate: toDate || undefined,
-          dateField: 'EMISSAO',
-          limit: hasAnyFilter ? undefined : 5,
-          mode: 'list',
-        });
-        setRomaneios(r);
-      } catch (e: any) {
-        if (e?.name !== 'AbortError') {
-          alert(`Erro ao carregar romaneios: ${String(e?.message || e)}`);
-        }
-      } finally {
-        setLoading(false);
+    try {
+      setLoading(true);
+      const r = await getRomaneios(signal, {
+        status: filters.status,
+        kind: filters.kind,
+        companyId: filters.companyId || undefined,
+        customerId: filters.customerId || undefined,
+        minTotal: minTotalValue,
+        maxTotal: maxTotalValue,
+        search: serverSearch || undefined,
+        fromDate: filters.fromDate || undefined,
+        toDate: filters.toDate || undefined,
+        dateField: 'EMISSAO',
+        limit: hasAnyFilter ? undefined : 5,
+        mode: 'list',
+      });
+      setRomaneios(r);
+      setAppliedFilters(filters);
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') {
+        alert(`Erro ao carregar romaneios: ${String(e?.message || e)}`);
       }
-    }, 300);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    return () => {
-      controller.abort();
-      clearTimeout(t);
-    };
-  }, [status, kind, companyId, customerId, minTotal, maxTotal, search, fromDate, toDate, dateField]);
+  useEffect(() => {
+    generateReport(initialReportFilters);
+    return () => lastQueryControllerRef.current?.abort();
+  }, [generateReport]);
 
   const inferKind = (r?: Partial<RomaneioData> | null): RomaneioKind => {
     const k = String((r as any)?.kind ?? '').trim().toUpperCase();
@@ -127,10 +176,18 @@ const Reports: React.FC = () => {
   };
 
   const reportTitle =
-    kind === 'COMPRA' ? 'Relatório de Romaneios de Compra' : kind === 'VENDA' ? 'Relatório de Romaneios de Venda' : 'Relatório de Romaneios';
+    appliedFilters.kind === 'COMPRA'
+      ? 'Relatório de Romaneios de Compra'
+      : appliedFilters.kind === 'VENDA'
+        ? 'Relatório de Romaneios de Venda'
+        : 'Relatório de Romaneios';
 
   const clientHeader =
-    kind === 'COMPRA' ? 'Produtor' : kind === 'VENDA' ? 'Cliente' : 'Cliente / Produtor';
+    appliedFilters.kind === 'COMPRA'
+      ? 'Produtor'
+      : appliedFilters.kind === 'VENDA'
+        ? 'Cliente'
+        : 'Cliente / Produtor';
 
   const computeTotal = (r: RomaneioData) => {
     const productsTotal = Array.isArray(r.products)
@@ -146,7 +203,9 @@ const Reports: React.FC = () => {
   };
 
   const getDateValue = (r: RomaneioData) => {
-    const v = (r as any)?.[dateField] ?? (dateField === 'saleDate' ? (r as any)?.emissionDate : (r as any)?.saleDate);
+    const v =
+      (r as any)?.[appliedFilters.dateField] ??
+      (appliedFilters.dateField === 'saleDate' ? (r as any)?.emissionDate : (r as any)?.saleDate);
     return typeof v === 'string' ? v : '';
   };
 
@@ -160,14 +219,14 @@ const Reports: React.FC = () => {
   };
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const min = minTotal.trim() ? Number(String(minTotal).replace(',', '.')) : null;
-    const max = maxTotal.trim() ? Number(String(maxTotal).replace(',', '.')) : null;
+    const term = appliedFilters.search.trim().toLowerCase();
+    const min = appliedFilters.minTotal.trim() ? Number(String(appliedFilters.minTotal).replace(',', '.')) : null;
+    const max = appliedFilters.maxTotal.trim() ? Number(String(appliedFilters.maxTotal).replace(',', '.')) : null;
 
     const passesDate = (d: string) => {
-      if (!d) return !fromDate && !toDate;
-      if (fromDate && d < fromDate) return false;
-      if (toDate && d > toDate) return false;
+      if (!d) return !appliedFilters.fromDate && !appliedFilters.toDate;
+      if (appliedFilters.fromDate && d < appliedFilters.fromDate) return false;
+      if (appliedFilters.toDate && d > appliedFilters.toDate) return false;
       return true;
     };
 
@@ -182,15 +241,15 @@ const Reports: React.FC = () => {
     return (romaneios || [])
       .filter((r) => {
         if (!r) return false;
-        if (status !== 'TODOS' && (r.status || 'PENDENTE') !== status) return false;
-        if (kind !== 'TODOS' && inferKind(r) !== kind) return false;
-        if (companyId) {
+        if (appliedFilters.status !== 'TODOS' && (r.status || 'PENDENTE') !== appliedFilters.status) return false;
+        if (appliedFilters.kind !== 'TODOS' && inferKind(r) !== appliedFilters.kind) return false;
+        if (appliedFilters.companyId) {
           const rid = String((r.company as any)?.id ?? (r as any)?.company_id ?? '');
-          if (rid !== String(companyId)) return false;
+          if (rid !== String(appliedFilters.companyId)) return false;
         }
-        if (customerId) {
+        if (appliedFilters.customerId) {
           const rid = String((r.customer as any)?.id ?? (r.client as any)?.id ?? (r as any)?.customer_id ?? '');
-          if (rid !== String(customerId)) return false;
+          if (rid !== String(appliedFilters.customerId)) return false;
         }
 
         const d = getDateValue(r);
@@ -213,7 +272,7 @@ const Reports: React.FC = () => {
         const aId = toOptionalInt((a as any)?.id);
         const bId = toOptionalInt((b as any)?.id);
 
-        switch (sortKey) {
+        switch (appliedFilters.sortKey) {
           case 'id_asc': {
             if (aId !== null && bId !== null) return aId - bId;
             if (aId !== null) return -1;
@@ -242,7 +301,7 @@ const Reports: React.FC = () => {
             return 0;
         }
       });
-  }, [companyId, customerId, dateField, fromDate, maxTotal, minTotal, romaneios, search, sortKey, status, toDate]);
+  }, [appliedFilters, romaneios]);
 
   const summary = useMemo(() => {
     const totalValue = filtered.reduce((acc, r) => acc + computeTotal(r), 0);
@@ -269,6 +328,7 @@ const Reports: React.FC = () => {
     setMaxTotal('');
     setSearch('');
     setSortKey('id_desc');
+    generateReport(initialReportFilters);
   };
 
   const exportPdf = async () => {
@@ -347,6 +407,13 @@ const Reports: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 w-full md:w-auto">
+          <button
+            onClick={() => generateReport(draftFilters)}
+            disabled={loading}
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-60 transition-all font-bold shadow-lg shadow-blue-100 dark:shadow-none"
+          >
+            <BarChart3 size={18} /> Gerar Relatório
+          </button>
           <button
             onClick={exportPdf}
             disabled={loading}
@@ -564,16 +631,20 @@ const Reports: React.FC = () => {
             <div>
               <div className="text-xl font-black uppercase">{reportTitle}</div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
-                {dateField === 'saleDate' ? 'Data de Venda' : 'Data de Emissão'}
-                {fromDate ? ` • De ${fromDate}` : ''}
-                {toDate ? ` • Até ${toDate}` : ''}
-                {status !== 'TODOS' ? ` • Status ${status}` : ''}
-                {kind !== 'TODOS' ? ` • Tipo ${kind}` : ''}
+                {appliedFilters.dateField === 'saleDate' ? 'Data de Venda' : 'Data de Emissão'}
+                {appliedFilters.fromDate ? ` • De ${appliedFilters.fromDate}` : ''}
+                {appliedFilters.toDate ? ` • Até ${appliedFilters.toDate}` : ''}
+                {appliedFilters.status !== 'TODOS' ? ` • Status ${appliedFilters.status}` : ''}
+                {appliedFilters.kind !== 'TODOS' ? ` • Tipo ${appliedFilters.kind}` : ''}
               </div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
-                {companyId ? `Empresa ${companies.find((c) => String(c.id) === String(companyId))?.name || companyId}` : 'Todas as empresas'}
+                {appliedFilters.companyId
+                  ? `Empresa ${companies.find((c) => String(c.id) === String(appliedFilters.companyId))?.name || appliedFilters.companyId}`
+                  : 'Todas as empresas'}
                 {' • '}
-                {customerId ? `Cliente ${customers.find((c) => String(c.id) === String(customerId))?.name || customerId}` : 'Todos os clientes'}
+                {appliedFilters.customerId
+                  ? `Cliente ${customers.find((c) => String(c.id) === String(appliedFilters.customerId))?.name || appliedFilters.customerId}`
+                  : 'Todos os clientes'}
               </div>
             </div>
             <div className="text-right">

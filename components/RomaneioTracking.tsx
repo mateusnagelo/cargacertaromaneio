@@ -26,6 +26,7 @@ import {
   getRomaneioById,
   deleteRomaneio as deleteRomaneioAPI,
   updateRomaneioStatus as updateStatusAPI,
+  updateRomaneioPaymentStatus as updatePaymentStatusAPI,
   sendRomaneioEmailNotification,
 } from '../api/romaneios';
 import { addProducerPayment } from '../api/producerPayments';
@@ -280,6 +281,30 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
     }
   };
 
+  const updatePaymentStatus = async (id: string, paymentStatus: string) => {
+    try {
+      const key = String(paymentStatus || '').trim().toUpperCase().replaceAll(' ', '_');
+      const current = history.find((r) => String((r as any)?.id ?? '') === String(id));
+      const existingDate = String((current as any)?.paymentDate ?? '').trim();
+      const nextDate = key === 'PAGO' ? (existingDate || toLocalDateInput()) : '';
+
+      setHistory((prev) =>
+        prev.map((r) =>
+          String((r as any)?.id ?? '') === String(id)
+            ? ({ ...(r as any), paymentStatus: key, paymentDate: nextDate } as any)
+            : r
+        )
+      );
+
+      await updatePaymentStatusAPI(id, key, nextDate);
+      fetchRomaneios();
+    } catch (error: any) {
+      console.error('Error updating payment status:', error);
+      alert(String(error?.message || error || 'Falha ao atualizar status do pagamento.'));
+      fetchRomaneios();
+    }
+  };
+
   const confirmDeleteRomaneio = async () => {
     if (!deleteTarget?.id || deleteLoading) return;
     setDeleteLoading(true);
@@ -307,8 +332,19 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
     const totalFromDb = Number((r as any)?.montante_total ?? (r as any)?.total_value ?? 0) || 0;
     const total = hasItems ? totalFromItems : totalFromDb;
     const s = normalizeStatus((r as any)?.status);
+    if (s === 'CANCELADO') return acc;
+
+    if (kind === 'COMPRA') {
+      const rawPaymentStatus = String((r as any)?.paymentStatus ?? (r as any)?.payload?.paymentStatus ?? '').trim();
+      const paymentStatusKey = rawPaymentStatus.toUpperCase().replaceAll(' ', '_');
+      const isPago = paymentStatusKey === 'PAGO';
+      if (isPago) acc.concluido += total;
+      else acc.pendente += total;
+      return acc;
+    }
+
     if (s === 'CONCLUÍDO') acc.concluido += total;
-    if (s !== 'CONCLUÍDO' && s !== 'CANCELADO') acc.pendente += total;
+    if (s !== 'CONCLUÍDO') acc.pendente += total;
     return acc;
   }, { concluido: 0, pendente: 0 });
 
@@ -324,6 +360,27 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
       default:
         return <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-slate-400 text-[10px] font-black uppercase border border-gray-100 dark:border-slate-700"><Clock size={12}/> Pendente</span>;
     }
+  };
+
+  const getPaymentBadge = (r: RomaneioData) => {
+    const rawPaymentStatus = String((r as any)?.paymentStatus ?? (r as any)?.status_pagamento ?? (r as any)?.payload?.paymentStatus ?? '').trim();
+    const paymentStatusKey = rawPaymentStatus ? rawPaymentStatus.toUpperCase().replaceAll(' ', '_') : '';
+    const paymentStatusLabel =
+      paymentStatusKey === 'EM_ABERTO' ? 'Em aberto' : paymentStatusKey === 'PARCIAL' ? 'Parcial' : paymentStatusKey === 'PAGO' ? 'Pago' : rawPaymentStatus;
+
+    const bg =
+      paymentStatusKey === 'PAGO'
+        ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-100 dark:border-green-800'
+        : paymentStatusKey === 'PARCIAL'
+          ? 'bg-amber-50 dark:bg-amber-900/25 text-amber-700 dark:text-amber-300 border-amber-100 dark:border-amber-800'
+          : 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 border-yellow-100 dark:border-yellow-800';
+
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase border ${bg}`}>
+        <CreditCard size={12} />
+        {paymentStatusLabel || '-'}
+      </span>
+    );
   };
 
   const executeClone = async () => {
@@ -520,6 +577,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
                 <th className="px-6 py-5 text-center">Data</th>
                 <th className="px-6 py-5">Total</th>
                 <th className="px-6 py-5">Status</th>
+                {kind === 'COMPRA' && <th className="px-6 py-5">Status do Pagamento</th>}
                 <th className="px-6 py-5 text-right">Ações</th>
               </tr>
             </thead>
@@ -570,6 +628,37 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
                         </div>
                       )}
                     </td>
+                    {kind === 'COMPRA' && (
+                      <td className="px-6 py-5">
+                        {normalizeStatus(r.status) === 'CANCELADO' ? (
+                          <div>{getPaymentBadge(r)}</div>
+                        ) : (
+                          <div className="relative group/payment cursor-pointer">
+                            {getPaymentBadge(r)}
+                            <div className="absolute top-full left-0 mt-2 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl shadow-2xl opacity-0 invisible group-hover/payment:opacity-100 group-hover/payment:visible transition-all z-20 p-2 min-w-[190px]">
+                              <button
+                                onClick={() => r.id && updatePaymentStatus(String(r.id), 'EM_ABERTO')}
+                                className="w-full text-left px-4 py-2 text-[10px] font-bold text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 rounded-lg"
+                              >
+                                Em aberto
+                              </button>
+                              <button
+                                onClick={() => r.id && updatePaymentStatus(String(r.id), 'PARCIAL')}
+                                className="w-full text-left px-4 py-2 text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg"
+                              >
+                                Parcial
+                              </button>
+                              <button
+                                onClick={() => r.id && updatePaymentStatus(String(r.id), 'PAGO')}
+                                className="w-full text-left px-4 py-2 text-[10px] font-bold text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg"
+                              >
+                                Pago
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    )}
                     <td className="px-6 py-5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => { void handleCloneOpen(r); }} className="p-2.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-all"><Copy size={18} /></button>
@@ -598,12 +687,12 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
               })}
               {loading && (
                 <tr>
-                  <td colSpan={6} className="py-20 text-center text-gray-400 dark:text-slate-600 italic">Carregando romaneios...</td>
+                  <td colSpan={kind === 'COMPRA' ? 7 : 6} className="py-20 text-center text-gray-400 dark:text-slate-600 italic">Carregando romaneios...</td>
                 </tr>
               )}
               {!loading && history.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-20 text-center text-gray-400 dark:text-slate-600 italic">Nenhum romaneio encontrado.</td>
+                  <td colSpan={kind === 'COMPRA' ? 7 : 6} className="py-20 text-center text-gray-400 dark:text-slate-600 italic">Nenhum romaneio encontrado.</td>
                 </tr>
               )}
             </tbody>

@@ -388,10 +388,31 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
       setIsSelectBeforeSaveOpen(true);
       return;
     }
-    if (romaneioKind === 'COMPRA') {
-      const missing: string[] = [];
+    const missing: string[] = [];
+
+    if (!initialData?.id) {
+      const terms = String(romaneio.terms || '').trim();
+      if (!terms) missing.push('Prazo / Condição');
+
       const dueDate = String(romaneio.dueDate || '').trim();
       if (!dueDate) missing.push('Vencimento');
+
+      const expenses = Array.isArray((romaneio as any)?.expenses) ? (romaneio as any).expenses : [];
+      for (let i = 0; i < expenses.length; i++) {
+        const e = expenses[i] || {};
+        const qtyRaw = String(e?.quantity ?? '').trim();
+        const unitRaw = String(e?.unitValue ?? '').trim();
+        const qtyMissing = qtyRaw === '' || qtyRaw === '/';
+        const unitMissing = unitRaw === '' || unitRaw === '/';
+        const label = String(e?.description || '').trim() || `Item ${i + 1}`;
+        if (qtyMissing) missing.push(`Despesas Extras: ${label} (Qtd)`);
+        if (unitMissing) missing.push(`Despesas Extras: ${label} (Unitário)`);
+      }
+    }
+
+    if (romaneioKind === 'COMPRA') {
+      const dueDate = String(romaneio.dueDate || '').trim();
+      if (!dueDate && !missing.includes('Vencimento')) missing.push('Vencimento');
 
       const rawPaymentStatus = String((romaneio as any).paymentStatus || '').trim();
       const paymentStatus = rawPaymentStatus.toUpperCase().replaceAll(' ', '_');
@@ -399,12 +420,12 @@ const RomaneioGenerator: React.FC<Props> = ({ onSave, initialData, onCreateNew, 
 
       const paymentDate = String((romaneio as any).paymentDate || '').trim();
       if (paymentStatus === 'PAGO' && !paymentDate) missing.push('Data do Pagamento');
+    }
 
-      if (missing.length > 0) {
-        setMissingRequiredFields(missing);
-        setIsRequiredFieldsOpen(true);
-        return;
-      }
+    if (missing.length > 0) {
+      setMissingRequiredFields(missing);
+      setIsRequiredFieldsOpen(true);
+      return;
     }
 
     if (initialData?.id) {

@@ -57,11 +57,11 @@ export const DEFAULT_ROMANEIO: RomaneioData = {
     { id: '1', code: '1', description: 'PRODUTO EXEMPLO', kg: 1, quantity: 0, unitValue: 0 }
   ],
   expenses: [
-    { id: 'e1', code: '684', description: 'SEGURO CARGA', quantity: '', unitValue: '', total: 0 },
-    { id: 'e2', code: '745', description: 'BALDEIO', quantity: '', unitValue: '', total: 0 },
-    { id: 'e3', code: '544', description: 'CAIXA MADEIRA', quantity: '', unitValue: '', total: 0 },
-    { id: 'e4', code: '692', description: 'PAPELÕES', quantity: '', unitValue: '', total: 0 },
-    { id: 'e5', code: '701', description: 'OUTRAS', quantity: '', unitValue: '', total: 0 }
+    { id: 'e1', code: '684', description: 'SEGURO CARGA', quantity: '1', unitValue: '0', total: 0 },
+    { id: 'e2', code: '745', description: 'BALDEIO', quantity: '1', unitValue: '0', total: 0 },
+    { id: 'e3', code: '544', description: 'CAIXA MADEIRA', quantity: '1', unitValue: '0', total: 0 },
+    { id: 'e4', code: '692', description: 'PAPELÕES', quantity: '1', unitValue: '0', total: 0 },
+    { id: 'e5', code: '701', description: 'OUTRAS', quantity: '1', unitValue: '0', total: 0 }
   ],
   bankingEnabled: true,
   banking: {

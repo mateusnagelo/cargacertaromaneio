@@ -488,6 +488,62 @@ export const getRomaneios = async (signal?: AbortSignal, options?: GetRomaneiosO
         return [
           {
             select:
+              'id,created_at,number,status,company_id,producer_id,total_value,status_pagamento,payment_date,payload,company:companies(id,name),producer:producers(id,name)',
+            withRelations: true,
+            applyPayload: true,
+          },
+          {
+            select:
+              'id,created_at,number,status,company_id,producer_id,total_value,payment_status,payment_date,payload,company:companies(id,name),producer:producers(id,name)',
+            withRelations: true,
+            applyPayload: true,
+          },
+          {
+            select:
+              'id,created_at,number,status,company_id,producer_id,total_value,status_pagamento,payload,company:companies(id,name),producer:producers(id,name)',
+            withRelations: true,
+            applyPayload: true,
+          },
+          {
+            select:
+              'id,created_at,number,status,company_id,producer_id,total_value,payment_status,payload,company:companies(id,name),producer:producers(id,name)',
+            withRelations: true,
+            applyPayload: true,
+          },
+          {
+            select:
+              'id,created_at,company_id,producer_id,total_value,status_pagamento,payment_date,payload,company:companies(id,name),producer:producers(id,name)',
+            withRelations: true,
+            applyPayload: true,
+          },
+          {
+            select:
+              'id,created_at,company_id,producer_id,total_value,payment_status,payment_date,payload,company:companies(id,name),producer:producers(id,name)',
+            withRelations: true,
+            applyPayload: true,
+          },
+          {
+            select:
+              'id,created_at,company_id,producer_id,total_value,status_pagamento,payload,company:companies(id,name),producer:producers(id,name)',
+            withRelations: true,
+            applyPayload: true,
+          },
+          {
+            select:
+              'id,created_at,company_id,producer_id,total_value,payment_status,payload,company:companies(id,name),producer:producers(id,name)',
+            withRelations: true,
+            applyPayload: true,
+          },
+          { select: 'id,created_at,number,status,company_id,producer_id,total_value,status_pagamento,payment_date,payload', withRelations: false, applyPayload: true },
+          { select: 'id,created_at,number,status,company_id,producer_id,total_value,payment_status,payment_date,payload', withRelations: false, applyPayload: true },
+          { select: 'id,created_at,number,status,company_id,producer_id,total_value,status_pagamento,payload', withRelations: false, applyPayload: true },
+          { select: 'id,created_at,number,status,company_id,producer_id,total_value,payment_status,payload', withRelations: false, applyPayload: true },
+          { select: 'id,created_at,company_id,producer_id,total_value,status_pagamento,payment_date,payload', withRelations: false, applyPayload: true },
+          { select: 'id,created_at,company_id,producer_id,total_value,payment_status,payment_date,payload', withRelations: false, applyPayload: true },
+          { select: 'id,created_at,company_id,producer_id,total_value,status_pagamento,payload', withRelations: false, applyPayload: true },
+          { select: 'id,created_at,company_id,producer_id,total_value,payment_status,payload', withRelations: false, applyPayload: true },
+          {
+            select:
               'id,created_at,number,status,company_id,producer_id,total_value,payload,company:companies(id,name),producer:producers(id,name)',
             withRelations: true,
             applyPayload: true,
@@ -1546,6 +1602,174 @@ export const updateRomaneioStatus = async (id: string, status: RomaneioStatus, s
   }
 
   throwQueryError(lastError || new Error('Romaneio não foi atualizado no banco (0 linhas afetadas).'));
+};
+
+export const updateRomaneioPaymentStatus = async (
+  id: string,
+  paymentStatus: string,
+  paymentDate?: string,
+  signal?: AbortSignal
+): Promise<void> => {
+  const isUuid = (v: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+
+  const toIsoDateOnly = (v: unknown) => {
+    const s = String(v ?? '').trim();
+    if (!s) return '';
+    const br = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (br) {
+      const dd = String(br[1]).padStart(2, '0');
+      const mm = String(br[2]).padStart(2, '0');
+      const yyyy = String(br[3]);
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    if (s.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const d = new Date(s);
+    const t = d.getTime();
+    if (!Number.isFinite(t)) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const idStr = String(id);
+  const idLooksUuid = isUuid(idStr);
+  const idAsNumber = (() => {
+    const s = idStr.trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  })();
+
+  const statusRaw = String(paymentStatus ?? '').trim();
+  const statusKey = statusRaw ? statusRaw.toUpperCase().replaceAll(' ', '_') : '';
+  const dateOnly = toIsoDateOnly(paymentDate ?? '');
+
+  const payloads: any[] = [
+    { payment_status: statusKey || null, payment_date: dateOnly || null },
+    { status_pagamento: statusKey || null, data_pagamento: dateOnly || null },
+    { status_pagamento: statusKey || null, payment_date: dateOnly || null },
+    { payment_status: statusKey || null, data_pagamento: dateOnly || null },
+  ];
+
+  const filters: Array<{ col: string; value: any }> = [];
+  if (idLooksUuid) filters.push({ col: 'id', value: idStr });
+  if (idAsNumber !== null) filters.push({ col: 'id', value: idAsNumber });
+  filters.push({ col: 'guia', value: idAsNumber ?? idStr });
+  filters.push({ col: 'numero', value: idAsNumber ?? idStr });
+  filters.push({ col: 'number', value: idAsNumber ?? idStr });
+
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
+  throwQueryError(userErr);
+  const userId = userRes?.user?.id || '';
+
+  const syncPayloadPaymentFields = async (f: { col: string; value: any }) => {
+    try {
+      const selectQuery = (supabase as any)
+        .from('romaneios')
+        .select('id,payload')
+        .eq(f.col, f.value)
+        .limit(1)
+        .maybeSingle();
+      const { data, error } = await applyAbortSignal(selectQuery, signal);
+      if (error) return;
+      if (!data?.id) return;
+
+      const rawPayload = (data as any)?.payload;
+      const payloadObj = (() => {
+        if (!rawPayload) return {};
+        if (typeof rawPayload === 'object') return { ...rawPayload };
+        if (typeof rawPayload === 'string') {
+          const s = rawPayload.trim();
+          if (!s) return {};
+          try {
+            const parsed = JSON.parse(s);
+            return parsed && typeof parsed === 'object' ? { ...parsed } : {};
+          } catch {
+            return {};
+          }
+        }
+        return {};
+      })();
+
+      payloadObj.paymentStatus = statusKey || '';
+      payloadObj.paymentDate = dateOnly || '';
+
+      const updateQuery = (supabase as any)
+        .from('romaneios')
+        .update({ payload: payloadObj }, { count: 'exact' })
+        .eq('id', (data as any).id);
+      await applyAbortSignal(updateQuery, signal);
+    } catch {
+    }
+  };
+
+  let lastError: any = null;
+  for (const f of filters) {
+    const tryUpdate = async (payload: any) => {
+      const query = (supabase as any).from('romaneios').update(payload, { count: 'exact' }).eq(f.col, f.value);
+      return await applyAbortSignal(query, signal);
+    };
+
+    for (const payload of payloads) {
+      let payload1: any = { ...(payload || {}) };
+      for (let attempt = 0; attempt < 12; attempt++) {
+        if (!payload1 || Object.keys(payload1).length === 0) break;
+        const res1: any = await tryUpdate(payload1);
+        if (res1?.error) {
+          lastError = res1.error;
+          const msg = String(res1.error?.message || res1.error);
+          if (
+            f.col === 'id' &&
+            !idLooksUuid &&
+            msg.toLowerCase().includes('invalid input syntax') &&
+            msg.toLowerCase().includes('uuid')
+          ) {
+            break;
+          }
+
+          const missing = getMissingColumnFromMessage(msg);
+          if (missing && missing in payload1) {
+            delete payload1[missing];
+            continue;
+          }
+          continue;
+        }
+        if (res1?.count) {
+          await syncPayloadPaymentFields(f);
+          return;
+        }
+        break;
+      }
+
+      if (userId) {
+        let payload2: any = { ...(payload || {}), owner_id: userId };
+        for (let attempt = 0; attempt < 12; attempt++) {
+          if (!payload2 || Object.keys(payload2).length === 0) break;
+          const res2: any = await tryUpdate(payload2);
+          if (res2?.error) {
+            lastError = res2.error;
+            const msg = String(res2.error?.message || res2.error);
+
+            const missing = getMissingColumnFromMessage(msg);
+            if (missing && missing in payload2) {
+              delete payload2[missing];
+              continue;
+            }
+            continue;
+          }
+          if (res2?.count) {
+            await syncPayloadPaymentFields(f);
+            return;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  throwQueryError(lastError || new Error('Status do pagamento não foi atualizado no banco (0 linhas afetadas).'));
 };
 
 export type RomaneioEmailNotificationType =

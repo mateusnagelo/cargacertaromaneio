@@ -575,7 +575,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
             <label className={labelClasses}>Vencimento</label>
             <input
               type="date"
-              required={kind === 'COMPRA'}
+              required
               value={data.dueDate}
               onChange={(e) => updateField('dueDate', e.target.value)}
               className={inputClasses}
@@ -624,7 +624,7 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
           </div>
           <div>
             <label className={labelClasses}>Prazo / Condição</label>
-            <input type="text" value={data.terms} onChange={(e) => updateField('terms', e.target.value.toUpperCase())} className={`${inputClasses} font-bold`} />
+            <input type="text" required value={data.terms} onChange={(e) => updateField('terms', e.target.value.toUpperCase())} className={`${inputClasses} font-bold`} />
           </div>
         </div>
       </section>
@@ -806,16 +806,18 @@ const RomaneioForm: React.FC<RomaneioFormProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
-              {(data.expenses || []).map((e) => (
-                <tr key={e.id}>
-                  <td className="p-2"><input type="text" value={e.code} onChange={v => updateExpense(e.id, 'code', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-center text-gray-900 dark:text-white" /></td>
-                  <td className="p-2"><input type="text" value={e.description} onChange={v => updateExpense(e.id, 'description', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-left text-gray-900 dark:text-white font-bold uppercase" /></td>
-                  <td className="p-2"><input type="text" value={e.quantity} onChange={v => updateExpense(e.id, 'quantity', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-center text-gray-900 dark:text-white" /></td>
-                  <td className="p-2"><input type="text" value={e.unitValue} onChange={v => updateExpense(e.id, 'unitValue', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-right text-gray-900 dark:text-white" /></td>
-                  <td className="p-2"><input type="number" step="0.01" value={e.total} onChange={v => updateExpense(e.id, 'total', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-right font-black text-gray-900 dark:text-white" /></td>
-                  <td className="p-2"><button onClick={() => removeExpense(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button></td>
-                </tr>
-              ))}
+              {(data.expenses || []).map((e, idx) => {
+                return (
+                  <tr key={e.id ?? String(idx)}>
+                    <td className="p-2"><input type="text" value={e.code} onChange={v => updateExpense(e.id, 'code', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-center text-gray-900 dark:text-white" /></td>
+                    <td className="p-2"><input type="text" value={e.description} onChange={v => updateExpense(e.id, 'description', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-left text-gray-900 dark:text-white font-bold uppercase" /></td>
+                    <td className="p-2"><input type="text" required value={e.quantity} onChange={v => updateExpense(e.id, 'quantity', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-center text-gray-900 dark:text-white" /></td>
+                    <td className="p-2"><input type="text" required value={e.unitValue} onChange={v => updateExpense(e.id, 'unitValue', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-right text-gray-900 dark:text-white" /></td>
+                    <td className="p-2"><input type="number" step="0.01" value={e.total} onChange={v => updateExpense(e.id, 'total', v.target.value)} className="w-full p-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-right font-black text-gray-900 dark:text-white" /></td>
+                    <td className="p-2"><button onClick={() => removeExpense(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

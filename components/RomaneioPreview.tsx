@@ -32,11 +32,8 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
     String((data as any)?.customer?.cnpj || '').trim() ||
     String((data as any)?.customer?.cpf || '').trim();
   const clientDoc = clientDocRaw || '-';
-  const visibleExpenses =
-    kind !== 'COMPRA'
-      ? data.expenses || []
-      : (data.expenses || []).filter((e: any) => Math.abs(Number(e?.total) || 0) >= 0.01);
-  const hasExpenseValues = kind !== 'COMPRA' ? true : visibleExpenses.length > 0;
+  const visibleExpenses = (data.expenses || []).filter((e: any) => Math.abs(Number(e?.total) || 0) >= 0.01);
+  const hasExpenseValues = visibleExpenses.length > 0;
 
   return (
     <div className="print-container bg-white w-[210mm] min-h-[297mm] shadow-2xl mx-auto text-black border border-gray-300">
@@ -193,7 +190,7 @@ const RomaneioPreview: React.FC<RomaneioPreviewProps> = ({ data, totals }) => {
         </div>
       </div>
 
-      {(kind !== 'COMPRA' || hasExpenseValues) && (
+      {hasExpenseValues && (
         <>
           {/* Expenses Table */}
           <table className="w-full border-collapse mb-4">

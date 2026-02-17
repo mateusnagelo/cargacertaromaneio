@@ -448,20 +448,32 @@ const App: React.FC = () => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-yellow-500' },
-    { id: 'tracking', label: 'Histórico', icon: ClipboardList, color: 'text-purple-500' },
-    { id: 'romaneios', label: 'Novo Romaneio', icon: FileText, color: 'text-orange-500' },
-    { id: 'tracking_compra', label: 'Histórico Compras', icon: ClipboardList, color: 'text-emerald-500' },
+    { id: 'romaneios', label: 'Novo Romaneio (Venda)', icon: FileText, color: 'text-orange-500' },
     { id: 'romaneios_compra', label: 'Novo Romaneio Compra', icon: FileText, color: 'text-emerald-500' },
-    { id: 'reports', label: 'Relatórios', icon: BarChart3, color: 'text-blue-500' },
-    { id: 'products', label: 'Estoque', icon: Package, color: 'text-green-500' },
-    { id: 'expenses', label: 'Despesas', icon: DollarSign, color: 'text-pink-500' },
-    { id: 'financeiro', label: 'Financeiro', icon: Wallet, color: 'text-emerald-500' },
-    { id: 'observations', label: 'Observações', icon: MessageSquareText, color: 'text-cyan-500' },
+    { id: 'tracking', label: 'Histórico Vendas', icon: ClipboardList, color: 'text-purple-500' },
+    { id: 'tracking_compra', label: 'Histórico Compras', icon: ClipboardList, color: 'text-emerald-500' },
     { id: 'customers', label: 'Clientes', icon: Users, color: 'text-blue-500' },
     { id: 'producers', label: 'Produtores', icon: Users, color: 'text-emerald-500' },
     { id: 'companies', label: 'Empresas', icon: Building2, color: 'text-indigo-500' },
+    { id: 'products', label: 'Estoque (Produtos)', icon: Package, color: 'text-green-500' },
+    { id: 'financeiro', label: 'Financeiro', icon: Wallet, color: 'text-emerald-500' },
+    { id: 'expenses', label: 'Despesas', icon: DollarSign, color: 'text-pink-500' },
+    { id: 'reports', label: 'Relatórios', icon: BarChart3, color: 'text-blue-500' },
+    { id: 'observations', label: 'Observações', icon: MessageSquareText, color: 'text-cyan-500' },
     { id: 'settings', label: 'Config. E-mail', icon: Settings, color: 'text-slate-500' },
   ];
+
+  const menuGroups: Array<{ title: string; ids: Array<string> }> = [
+    { title: 'Operacional', ids: ['romaneios', 'romaneios_compra', 'tracking', 'tracking_compra'] },
+    { title: 'Cadastros', ids: ['customers', 'producers', 'companies'] },
+    { title: 'Gestão', ids: ['dashboard', 'products', 'financeiro', 'expenses', 'reports', 'observations', 'settings'] },
+  ];
+
+  const menuItemById = (() => {
+    const out: Record<string, (typeof menuItems)[number]> = {};
+    for (const item of menuItems) out[String(item.id)] = item;
+    return out;
+  })();
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-gray-50 dark:bg-slate-950 overflow-hidden font-sans transition-colors duration-300">
@@ -683,26 +695,45 @@ const App: React.FC = () => {
                  {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
                </button>
             </div>
-            {menuItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  if (item.id === 'romaneios' || item.id === 'romaneios_compra') setSelectedRomaneio(null);
-                  navigateTo(
-                    item.id as Screen,
-                    item.id === 'tracking' || item.id === 'tracking_compra' || item.id === 'dashboard' ? { reset: true } : undefined
+            {menuGroups.map((group) => (
+              <div key={group.title} className="space-y-2">
+                <div className="px-3 pt-3 pb-1">
+                  <p className="text-[10px] font-black text-gray-300 dark:text-slate-600 uppercase tracking-widest">{group.title}</p>
+                </div>
+                {group.ids.map((id) => {
+                  const item = menuItemById[id];
+                  if (!item) return null;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        if (item.id === 'romaneios' || item.id === 'romaneios_compra') setSelectedRomaneio(null);
+                        navigateTo(
+                          item.id as Screen,
+                          item.id === 'tracking' || item.id === 'tracking_compra' || item.id === 'dashboard' ? { reset: true } : undefined
+                        );
+                        setIsSidebarOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 group ${
+                        activeScreen === item.id
+                          ? 'bg-gray-900 dark:bg-white text-white dark:text-slate-900 shadow-xl shadow-gray-200 dark:shadow-none'
+                          : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <item.icon
+                        className={`w-5 h-5 shrink-0 ${
+                          activeScreen === item.id
+                            ? isDarkMode
+                              ? 'text-indigo-900'
+                              : item.color
+                            : 'text-gray-400 group-hover:text-gray-600 dark:group-hover:text-slate-300'
+                        }`}
+                      />
+                      <span className="font-bold text-sm">{item.label}</span>
+                    </button>
                   );
-                  setIsSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-200 group ${
-                  activeScreen === item.id 
-                    ? 'bg-gray-900 dark:bg-white text-white dark:text-slate-900 shadow-xl shadow-gray-200 dark:shadow-none' 
-                    : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white'
-                }`}
-              >
-                <item.icon className={`w-5 h-5 shrink-0 ${activeScreen === item.id ? (isDarkMode ? 'text-indigo-900' : item.color) : 'text-gray-400 group-hover:text-gray-600 dark:group-hover:text-slate-300'}`} />
-                <span className="font-bold text-sm">{item.label}</span>
-              </button>
+                })}
+              </div>
             ))}
           </nav>
 

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { RomaneioData, RomaneioKind, RomaneioStatus } from '../types';
+import { CompanyInfo, RomaneioData, RomaneioKind, RomaneioStatus } from '../types';
 import { 
   Search, 
   Calendar, 
@@ -20,6 +20,7 @@ import {
   Edit3
 } from 'lucide-react';
 import { formatCurrency, formatDate, toLocalDateInput } from '../utils';
+import { getCompanies } from '../api/companies';
 import {
   addRomaneio,
   getRomaneios,
@@ -39,6 +40,8 @@ interface Props {
 const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioKind }) => {
   const [history, setHistory] = useState<RomaneioData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [companies, setCompanies] = useState<CompanyInfo[]>([]);
+  const [companyId, setCompanyId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<RomaneioStatus | 'TODOS'>('TODOS');
   const [dateField, setDateField] = useState<'EMISSAO' | 'CRIACAO'>('EMISSAO');
@@ -200,6 +203,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
         search: searchTerm,
         status: statusFilter,
         kind,
+        companyId: companyId || undefined,
         mode: 'list',
         dateField,
         fromDate: fromDate || undefined,
@@ -218,6 +222,23 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
 
   useEffect(() => {
     const controller = new AbortController();
+    const signal = controller.signal;
+    const run = async () => {
+      try {
+        const c = await getCompanies(signal);
+        setCompanies(c);
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') {
+          console.error('Falha ao carregar empresas:', e);
+        }
+      }
+    };
+    run();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
     const t = setTimeout(() => {
       void fetchRomaneios(controller.signal);
     }, 250);
@@ -226,7 +247,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
       controller.abort();
       clearTimeout(t);
     };
-  }, [searchTerm, statusFilter, fromDate, toDate, dateField, limit, kind]);
+  }, [searchTerm, statusFilter, fromDate, toDate, dateField, limit, kind, companyId]);
 
   const handleView = async (row: RomaneioData) => {
     try {
@@ -496,7 +517,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
         </div>
 
         <div className="p-4 md:p-6 border-b border-gray-50 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-800/20 flex flex-col md:flex-row items-stretch md:items-end justify-between gap-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 flex-1">
             <div className="flex flex-col gap-1">
               <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Período</span>
               <select
@@ -506,6 +527,22 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
               >
                 <option value="EMISSAO">Data de Emissão</option>
                 <option value="CRIACAO">Data de Cadastro</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Empresa</span>
+              <select
+                value={companyId}
+                onChange={(e) => setCompanyId(e.target.value)}
+                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 transition-all text-[11px] font-bold text-gray-700 dark:text-white"
+              >
+                <option value="">Todas as empresas</option>
+                {companies.map((c) => (
+                  <option key={String((c as any)?.id ?? '')} value={String((c as any)?.id ?? '')}>
+                    {String((c as any)?.name ?? '')}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -559,6 +596,7 @@ const RomaneioTracking: React.FC<Props> = ({ onView, kind = 'VENDA' as RomaneioK
                 setToDate('');
                 setDateField('EMISSAO');
                 setLimit(5);
+                setCompanyId('');
               }}
               className="px-4 py-3 rounded-2xl bg-white dark:bg-slate-800 text-gray-400 dark:text-slate-400 border border-gray-100 dark:border-slate-700 hover:text-gray-600 dark:hover:text-slate-200 transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
             >

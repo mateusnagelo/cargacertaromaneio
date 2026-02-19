@@ -499,17 +499,23 @@ const Financeiro: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">De</span>
               <input
                 type="date"
+                aria-label="Data inicial"
+                title="Data inicial"
                 className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-slate-900 text-gray-900 dark:text-white transition-all text-sm"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
               />
             </div>
-            <div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Até</span>
               <input
                 type="date"
+                aria-label="Data final"
+                title="Data final"
                 className="w-full p-3 border border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-slate-900 text-gray-900 dark:text-white transition-all text-sm"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}

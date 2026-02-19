@@ -751,18 +751,24 @@ const Reports: React.FC = () => {
               </select>
             </div>
 
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 flex flex-col gap-1">
+              <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">De</span>
               <input
                 type="date"
+                aria-label="Data inicial"
+                title="Data inicial"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
                 className="w-full px-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm text-gray-900 dark:text-white"
               />
             </div>
 
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 flex flex-col gap-1">
+              <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Até</span>
               <input
                 type="date"
+                aria-label="Data final"
+                title="Data final"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
                 className="w-full px-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm text-gray-900 dark:text-white"

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, FileDown, Filter, RotateCcw, Search } from 'lucide-react';
 import { getCompanies } from '../api/companies';
-import { getCustomers } from '../api/customers';
+import { getCustomers, getProducers } from '../api/customers';
 import { getRomaneios } from '../api/romaneios';
 import { CompanyInfo, Customer, RomaneioData, RomaneioKind, RomaneioStatus } from '../types';
 import { formatCurrency, formatDate, toLocalDateInput } from '../utils';
@@ -32,7 +32,7 @@ type ReportFilters = {
   sortKey: SortKey;
 };
 
-type ReportType = 'ROMANEIOS' | 'RESULTADO' | 'PRODUTO' | 'MENSAL';
+type ReportType = 'ROMANEIOS' | 'RESULTADO' | 'PRODUTO' | 'PRODUTOR' | 'MENSAL';
 
 const initialReportFilters: ReportFilters = {
   dateField: 'saleDate',
@@ -53,6 +53,7 @@ const Reports: React.FC = () => {
   const [romaneios, setRomaneios] = useState<RomaneioData[]>([]);
   const [companies, setCompanies] = useState<CompanyInfo[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [producers, setProducers] = useState<Customer[]>([]);
 
   const [reportType, setReportType] = useState<ReportType>('ROMANEIOS');
   const [dateField, setDateField] = useState<DateField>('saleDate');
@@ -90,7 +91,7 @@ const Reports: React.FC = () => {
   );
 
   useEffect(() => {
-    if (reportType !== 'RESULTADO' && reportType !== 'PRODUTO' && reportType !== 'MENSAL') return;
+    if (reportType !== 'RESULTADO' && reportType !== 'PRODUTO' && reportType !== 'PRODUTOR' && reportType !== 'MENSAL') return;
     if (kind !== 'TODOS') setKind('TODOS');
   }, [kind, reportType]);
 
@@ -100,9 +101,10 @@ const Reports: React.FC = () => {
 
     const run = async () => {
       try {
-        const [c, cu] = await Promise.all([getCompanies(signal), getCustomers(signal)]);
+        const [c, cu, p] = await Promise.all([getCompanies(signal), getCustomers(signal), getProducers(signal)]);
         setCompanies(c);
         setCustomers(cu);
+        setProducers(p);
       } catch (e: any) {
         if (e?.name !== 'AbortError') {
           alert(`Erro ao carregar relatórios: ${String(e?.message || e)}`);
@@ -134,7 +136,11 @@ const Reports: React.FC = () => {
     const maxTotalValue = parseAmount(filters.maxTotal);
     const hasAnyFilter =
       filters.status !== 'TODOS' ||
-      (activeReportType !== 'RESULTADO' && activeReportType !== 'PRODUTO' && activeReportType !== 'MENSAL' && filters.kind !== 'TODOS') ||
+      (activeReportType !== 'RESULTADO' &&
+        activeReportType !== 'PRODUTO' &&
+        activeReportType !== 'PRODUTOR' &&
+        activeReportType !== 'MENSAL' &&
+        filters.kind !== 'TODOS') ||
       !!String(filters.companyId || '').trim() ||
       !!String(filters.customerId || '').trim() ||
       minTotalValue !== null ||
@@ -147,17 +153,25 @@ const Reports: React.FC = () => {
       setLoading(true);
       const r = await getRomaneios(signal, {
         status: filters.status,
-        kind: activeReportType === 'RESULTADO' || activeReportType === 'PRODUTO' || activeReportType === 'MENSAL' ? 'TODOS' : filters.kind,
+        kind:
+          activeReportType === 'RESULTADO' || activeReportType === 'PRODUTO' || activeReportType === 'PRODUTOR' || activeReportType === 'MENSAL'
+            ? 'TODOS'
+            : filters.kind,
         companyId: filters.companyId || undefined,
-        customerId: filters.customerId || undefined,
+        customerId: activeReportType === 'PRODUTOR' ? undefined : filters.customerId || undefined,
         minTotal: minTotalValue,
         maxTotal: maxTotalValue,
         search: serverSearch || undefined,
         fromDate: filters.fromDate || undefined,
         toDate: filters.toDate || undefined,
         dateField: 'EMISSAO',
-        limit: activeReportType === 'RESULTADO' || activeReportType === 'PRODUTO' || activeReportType === 'MENSAL' ? undefined : hasAnyFilter ? undefined : 5,
-        mode: activeReportType === 'PRODUTO' || activeReportType === 'MENSAL' ? 'full' : 'list',
+        limit:
+          activeReportType === 'RESULTADO' || activeReportType === 'PRODUTO' || activeReportType === 'PRODUTOR' || activeReportType === 'MENSAL'
+            ? undefined
+            : hasAnyFilter
+              ? undefined
+              : 5,
+        mode: activeReportType === 'PRODUTO' || activeReportType === 'PRODUTOR' || activeReportType === 'MENSAL' ? 'full' : 'list',
       });
       setRomaneios(r);
       setAppliedFilters(filters);
@@ -191,6 +205,8 @@ const Reports: React.FC = () => {
       ? 'Relatório de Resultado (Lucro Real)'
       : reportType === 'PRODUTO'
         ? 'Relatório por Produto'
+        : reportType === 'PRODUTOR'
+          ? 'Relatório por Produtor'
         : reportType === 'MENSAL'
           ? 'Relatório Comparativo Mensal'
         : appliedFilters.kind === 'COMPRA'
@@ -204,6 +220,8 @@ const Reports: React.FC = () => {
       ? 'Cliente / Produtor'
       : reportType === 'PRODUTO'
         ? 'Cliente / Produtor'
+        : reportType === 'PRODUTOR'
+          ? 'Produtor'
         : reportType === 'MENSAL'
           ? 'Cliente / Produtor'
         : appliedFilters.kind === 'COMPRA'
@@ -292,6 +310,12 @@ const Reports: React.FC = () => {
           return code.includes(term) || desc.includes(term);
         });
       }
+      if (reportType === 'PRODUTOR') {
+        const n = String(r.number ?? '').toLowerCase();
+        const producerName = String((r as any)?.producer?.name ?? r.producer?.name ?? r.customer?.name ?? r.client?.name ?? '').toLowerCase();
+        const companyName = String(r.company?.name ?? '').toLowerCase();
+        return n.includes(term) || producerName.includes(term) || companyName.includes(term);
+      }
       const n = String(r.number ?? '').toLowerCase();
       const clientName = String(r.client?.name ?? r.customer?.name ?? '').toLowerCase();
       const companyName = String(r.company?.name ?? '').toLowerCase();
@@ -308,8 +332,13 @@ const Reports: React.FC = () => {
           if (rid !== String(appliedFilters.companyId)) return false;
         }
         if (appliedFilters.customerId) {
-          const rid = String((r.customer as any)?.id ?? (r.client as any)?.id ?? (r as any)?.customer_id ?? '');
-          if (rid !== String(appliedFilters.customerId)) return false;
+          if (reportType === 'PRODUTOR') {
+            const rid = String((r.producer as any)?.id ?? (r as any)?.producer_id ?? (r as any)?.producerId ?? '');
+            if (rid !== String(appliedFilters.customerId)) return false;
+          } else {
+            const rid = String((r.customer as any)?.id ?? (r.client as any)?.id ?? (r as any)?.customer_id ?? '');
+            if (rid !== String(appliedFilters.customerId)) return false;
+          }
         }
 
         const d = getDateValue(r);
@@ -461,6 +490,92 @@ const Reports: React.FC = () => {
       .sort((a, b) => b.profit - a.profit);
   }, [appliedFilters.search, filtered, inferKind, isConcludedRomaneio, reportType]);
 
+  type ProducerRow = {
+    key: string;
+    producerLabel: string;
+    totalSupplied: number;
+    totalBought: number;
+    discounts: number;
+    commission: number;
+    amountToPay: number;
+    marginGenerated: number;
+  };
+
+  const producerRows = useMemo((): ProducerRow[] => {
+    if (reportType !== 'PRODUTOR') return [];
+
+    const normalizeText = (v: unknown) => {
+      return String(v ?? '')
+        .trim()
+        .toUpperCase()
+        .replaceAll('Ç', 'C')
+        .replaceAll('Ã', 'A')
+        .replaceAll('Á', 'A')
+        .replaceAll('Â', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Ê', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ô', 'O')
+        .replaceAll('Õ', 'O')
+        .replaceAll('Ú', 'U');
+    };
+
+    const isCommissionExpense = (e: any) => {
+      const label = normalizeText(e?.description ?? e?.name ?? e?.type ?? e?.category ?? '');
+      return label.includes('COMISS');
+    };
+
+    const usable = filtered.filter(isConcludedRomaneio).filter((r) => inferKind(r) === 'COMPRA');
+    const byProducer: Record<
+      string,
+      { producerLabel: string; totalSupplied: number; totalBought: number; discounts: number; commission: number }
+    > = {};
+
+    for (const r of usable) {
+      const producerIdRaw =
+        (r as any)?.producer_id ?? (r as any)?.producerId ?? (r as any)?.producer?.id ?? (r as any)?.customer_id ?? r.customer?.id ?? '';
+      const producerName = String((r as any)?.producer?.name ?? r.customer?.name ?? r.client?.name ?? 'Sem produtor').trim();
+      const producerKey = String(producerIdRaw || producerName || 'Sem produtor').trim();
+      if (!producerKey) continue;
+
+      if (!byProducer[producerKey]) {
+        byProducer[producerKey] = { producerLabel: producerName || 'Sem produtor', totalSupplied: 0, totalBought: 0, discounts: 0, commission: 0 };
+      }
+
+      const productsArr: any[] = Array.isArray((r as any)?.products) ? ((r as any).products as any[]) : [];
+      const expensesArr: any[] = Array.isArray((r as any)?.expenses) ? ((r as any).expenses as any[]) : [];
+
+      byProducer[producerKey].totalSupplied += productsArr.reduce((acc, p) => acc + (Number(p?.quantity ?? 0) || 0), 0);
+      byProducer[producerKey].totalBought += computeProductsTotal(r);
+
+      for (const e of expensesArr) {
+        const raw = Number((e as any)?.total ?? 0) || 0;
+        const amount = Math.abs(raw);
+        if (!amount) continue;
+        if (isCommissionExpense(e)) byProducer[producerKey].commission += amount;
+        else byProducer[producerKey].discounts += amount;
+      }
+    }
+
+    return Object.entries(byProducer)
+      .map(([key, v]) => {
+        const amountToPay = v.totalBought - v.discounts - v.commission;
+        const marginGenerated = v.discounts + v.commission;
+        return {
+          key,
+          producerLabel: v.producerLabel,
+          totalSupplied: v.totalSupplied,
+          totalBought: v.totalBought,
+          discounts: v.discounts,
+          commission: v.commission,
+          amountToPay,
+          marginGenerated,
+        };
+      })
+      .sort((a, b) => b.marginGenerated - a.marginGenerated);
+  }, [computeProductsTotal, filtered, inferKind, isConcludedRomaneio, reportType]);
+
   type MonthlyRow = {
     key: string;
     monthLabel: string;
@@ -600,6 +715,8 @@ const Reports: React.FC = () => {
           ? 'Relatorio_Resultado'
           : reportType === 'PRODUTO'
             ? 'Relatorio_Produtos'
+            : reportType === 'PRODUTOR'
+              ? 'Relatorio_Produtor'
             : reportType === 'MENSAL'
               ? 'Relatorio_Mensal'
             : 'Relatorio_Romaneios';
@@ -638,7 +755,9 @@ const Reports: React.FC = () => {
               const nextType = e.target.value as ReportType;
               setReportType(nextType);
               const nextFilters =
-                nextType === 'RESULTADO' || nextType === 'PRODUTO' || nextType === 'MENSAL' ? { ...draftFilters, kind: 'TODOS' } : draftFilters;
+                nextType === 'RESULTADO' || nextType === 'PRODUTO' || nextType === 'PRODUTOR' || nextType === 'MENSAL'
+                  ? { ...draftFilters, kind: 'TODOS' }
+                  : draftFilters;
               generateReport(nextFilters, nextType);
             }}
             disabled={loading}
@@ -647,6 +766,7 @@ const Reports: React.FC = () => {
             <option value="ROMANEIOS">Romaneios</option>
             <option value="RESULTADO">Resultado (Lucro Real)</option>
             <option value="PRODUTO">Por Produto</option>
+            <option value="PRODUTOR">Por Produtor</option>
             <option value="MENSAL">Comparativo Mensal</option>
           </select>
           <button
@@ -699,7 +819,7 @@ const Reports: React.FC = () => {
             <p className="text-lg font-black text-gray-900 dark:text-white">{(resultSummary?.margemPercent || 0).toFixed(2)}%</p>
           </div>
         </div>
-      ) : reportType === 'PRODUTO' || reportType === 'MENSAL' ? null : (
+      ) : reportType === 'PRODUTO' || reportType === 'PRODUTOR' || reportType === 'MENSAL' ? null : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
           <div className="bg-white dark:bg-slate-900 p-4 rounded-[24px] border border-gray-100 dark:border-slate-800 shadow-sm">
             <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Registros</p>
@@ -732,6 +852,8 @@ const Reports: React.FC = () => {
                 placeholder={
                   reportType === 'PRODUTO'
                     ? 'Produto (código ou descrição)...'
+                    : reportType === 'PRODUTOR'
+                      ? 'Produtor...'
                     : reportType === 'MENSAL'
                       ? 'Mês (MM/AAAA)...'
                       : 'Nº, cliente ou empresa...'
@@ -789,7 +911,7 @@ const Reports: React.FC = () => {
             </div>
 
             <div className="md:col-span-2">
-              {reportType === 'RESULTADO' || reportType === 'PRODUTO' || reportType === 'MENSAL' ? (
+              {reportType === 'RESULTADO' || reportType === 'PRODUTO' || reportType === 'PRODUTOR' || reportType === 'MENSAL' ? (
                 <div className="w-full px-4 py-3.5 bg-gray-50 dark:bg-slate-800/70 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm text-gray-500 dark:text-slate-400 font-bold">
                   Todos os tipos
                 </div>
@@ -827,8 +949,8 @@ const Reports: React.FC = () => {
                 onChange={(e) => setCustomerId(e.target.value)}
                 className="w-full px-4 py-3.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm text-gray-900 dark:text-white"
               >
-                <option value="">Todos os clientes</option>
-                {customers.map((c) => (
+                <option value="">{reportType === 'PRODUTOR' ? 'Todos os produtores' : 'Todos os clientes'}</option>
+                {(reportType === 'PRODUTOR' ? producers : customers).map((c) => (
                   <option key={String(c.id)} value={String(c.id)}>
                     {c.name}
                   </option>
@@ -903,6 +1025,39 @@ const Reports: React.FC = () => {
                         <td className="py-4 pr-6 text-right text-gray-700 dark:text-slate-300">{formatCurrency(r.avgCost)}</td>
                         <td className="py-4 pr-6 text-right text-gray-700 dark:text-slate-300">{formatCurrency(r.avgSell)}</td>
                         <td className="py-4 text-right font-black text-gray-900 dark:text-white">{formatCurrency(r.profit)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : reportType === 'PRODUTOR' ? (
+            producerRows.length === 0 ? (
+              <div className="text-sm font-bold text-gray-500 dark:text-slate-400">Nenhum registro encontrado.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1180px]">
+                  <thead>
+                    <tr className="text-left text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest border-b border-gray-50 dark:border-slate-800">
+                      <th className="py-4 pr-6">Produtor</th>
+                      <th className="py-4 pr-6 text-right">Total fornecido</th>
+                      <th className="py-4 pr-6 text-right">Valor total comprado</th>
+                      <th className="py-4 pr-6 text-right">Descontos</th>
+                      <th className="py-4 pr-6 text-right">Comissão</th>
+                      <th className="py-4 pr-6 text-right">Saldo a pagar</th>
+                      <th className="py-4 text-right">Margem gerada</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {producerRows.map((r) => (
+                      <tr key={r.key} className="border-b border-gray-50 dark:border-slate-800 text-sm">
+                        <td className="py-4 pr-6 font-black text-gray-900 dark:text-white">{r.producerLabel}</td>
+                        <td className="py-4 pr-6 text-right text-gray-700 dark:text-slate-300">{r.totalSupplied}</td>
+                        <td className="py-4 pr-6 text-right text-gray-700 dark:text-slate-300">{formatCurrency(r.totalBought)}</td>
+                        <td className="py-4 pr-6 text-right text-gray-700 dark:text-slate-300">{formatCurrency(r.discounts)}</td>
+                        <td className="py-4 pr-6 text-right text-gray-700 dark:text-slate-300">{formatCurrency(r.commission)}</td>
+                        <td className="py-4 pr-6 text-right font-black text-gray-900 dark:text-white">{formatCurrency(r.amountToPay)}</td>
+                        <td className="py-4 text-right font-black text-gray-900 dark:text-white">{formatCurrency(r.marginGenerated)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -992,8 +1147,13 @@ const Reports: React.FC = () => {
                   : 'Todas as empresas'}
                 {' • '}
                 {appliedFilters.customerId
-                  ? `Cliente ${customers.find((c) => String(c.id) === String(appliedFilters.customerId))?.name || appliedFilters.customerId}`
-                  : 'Todos os clientes'}
+                  ? `${reportType === 'PRODUTOR' ? 'Produtor' : 'Cliente'} ${
+                      (reportType === 'PRODUTOR' ? producers : customers).find((c) => String(c.id) === String(appliedFilters.customerId))?.name ||
+                      appliedFilters.customerId
+                    }`
+                  : reportType === 'PRODUTOR'
+                    ? 'Todos os produtores'
+                    : 'Todos os clientes'}
               </div>
             </div>
             <div className="text-right">
@@ -1031,7 +1191,7 @@ const Reports: React.FC = () => {
                 </div>
               </>
             </div>
-          ) : reportType === 'PRODUTO' || reportType === 'MENSAL' ? null : (
+          ) : reportType === 'PRODUTO' || reportType === 'PRODUTOR' || reportType === 'MENSAL' ? null : (
             <div className="grid grid-cols-3 gap-3 mb-4">
               <>
                 <div className="border border-black p-3">
@@ -1073,6 +1233,33 @@ const Reports: React.FC = () => {
                     <td className="py-1 px-2 text-right">{formatCurrency(r.avgCost)}</td>
                     <td className="py-1 px-2 text-right">{formatCurrency(r.avgSell)}</td>
                     <td className="py-1 px-2 text-right font-black">{formatCurrency(r.profit)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : reportType === 'PRODUTOR' ? (
+            <table className="w-full border-collapse text-[10px]">
+              <thead>
+                <tr className="border-y border-black bg-gray-100 text-left font-black uppercase">
+                  <th className="py-2 px-2">Produtor</th>
+                  <th className="py-2 px-2 text-right">Total fornecido</th>
+                  <th className="py-2 px-2 text-right">Valor total comprado</th>
+                  <th className="py-2 px-2 text-right">Descontos</th>
+                  <th className="py-2 px-2 text-right">Comissão</th>
+                  <th className="py-2 px-2 text-right">Saldo a pagar</th>
+                  <th className="py-2 px-2 text-right">Margem gerada</th>
+                </tr>
+              </thead>
+              <tbody>
+                {producerRows.map((r) => (
+                  <tr key={r.key} className="border-b border-gray-200">
+                    <td className="py-1 px-2 font-black">{r.producerLabel}</td>
+                    <td className="py-1 px-2 text-right">{r.totalSupplied}</td>
+                    <td className="py-1 px-2 text-right">{formatCurrency(r.totalBought)}</td>
+                    <td className="py-1 px-2 text-right">{formatCurrency(r.discounts)}</td>
+                    <td className="py-1 px-2 text-right">{formatCurrency(r.commission)}</td>
+                    <td className="py-1 px-2 text-right font-black">{formatCurrency(r.amountToPay)}</td>
+                    <td className="py-1 px-2 text-right font-black">{formatCurrency(r.marginGenerated)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -1136,8 +1136,8 @@ const Reports: React.FC = () => {
               <div className="text-xl font-black uppercase">{reportTitle}</div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
                 {appliedFilters.dateField === 'saleDate' ? 'Data de Venda' : 'Data de Emissão'}
-                {appliedFilters.fromDate ? ` • De ${appliedFilters.fromDate}` : ''}
-                {appliedFilters.toDate ? ` • Até ${appliedFilters.toDate}` : ''}
+                {appliedFilters.fromDate ? ` • De ${formatDate(appliedFilters.fromDate).replaceAll('/', '-')}` : ''}
+                {appliedFilters.toDate ? ` • Até ${formatDate(appliedFilters.toDate).replaceAll('/', '-')}` : ''}
                 {appliedFilters.status !== 'TODOS' ? ` • Status ${appliedFilters.status}` : ''}
                 {appliedFilters.kind !== 'TODOS' ? ` • Tipo ${appliedFilters.kind}` : ''}
               </div>
